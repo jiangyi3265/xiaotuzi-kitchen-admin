@@ -55,17 +55,31 @@ jobs:
             "DEPLOY_PATH='$DEPLOY_PATH' REPO_URL='$REPO_URL' bash -s" <<'EOF'
           set -euo pipefail
 
+          retry() {
+            for i in 1 2 3; do
+              "$@" && return 0
+              sleep $((i * 5))
+            done
+            "$@"
+          }
+
           TARGET_DIR="$DEPLOY_PATH/RuoYi-Vue3"
           if [ -d "$TARGET_DIR/.git" ]; then
-            git -C "$TARGET_DIR" fetch --prune origin main
+            retry git -C "$TARGET_DIR" fetch --prune origin main
             git -C "$TARGET_DIR" reset --hard origin/main
           else
             rm -rf "$TARGET_DIR"
-            git clone --branch main --depth 1 "$REPO_URL" "$TARGET_DIR"
+            retry git clone --branch main --depth 1 "$REPO_URL" "$TARGET_DIR"
           fi
 
           cd "$DEPLOY_PATH"
           docker compose -f docker-compose.deploy.yml up -d --build admin
+          for i in $(seq 1 20); do
+            if curl -fsSI http://127.0.0.1:18080/ >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
           curl -fsSI http://127.0.0.1:18080/ >/dev/null
           docker compose -f docker-compose.deploy.yml ps
           EOF
