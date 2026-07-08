@@ -1,0 +1,94 @@
+<template>
+  <div class="app-container">
+    <el-card>
+      <template #header>
+        <span>厨房 / 店铺设置</span>
+      </template>
+      <el-form ref="shopRef" :model="form" label-width="110px" style="max-width: 680px">
+        <el-divider content-position="left">基础信息</el-divider>
+        <el-form-item label="厨房名称">
+          <el-input v-model="form.shopName" placeholder="请输入厨房名称" />
+        </el-form-item>
+        <el-form-item label="口号/副标题">
+          <el-input v-model="form.subtitle" placeholder="如：世间万物，唯有美食不可辜负" />
+        </el-form-item>
+        <el-form-item label="厨房头像">
+          <image-upload v-model="form.avatar" :limit="1" />
+        </el-form-item>
+        <el-form-item label="背景图">
+          <image-upload v-model="form.banner" :limit="1" />
+        </el-form-item>
+
+        <el-divider content-position="left">邀请下单</el-divider>
+        <el-form-item label="邀请封面">
+          <image-upload v-model="form.inviteCover" :limit="1" />
+        </el-form-item>
+        <el-form-item label="邀请文案">
+          <el-input v-model="form.inviteText" type="textarea" :rows="2" maxlength="150" show-word-limit />
+        </el-form-item>
+
+        <el-divider content-position="left">收款码（线下收款）</el-divider>
+        <el-form-item label="微信收款码">
+          <image-upload v-model="form.wechatQr" :limit="1" />
+        </el-form-item>
+        <el-form-item label="支付宝收款码">
+          <image-upload v-model="form.alipayQr" :limit="1" />
+        </el-form-item>
+
+        <el-divider content-position="left">门店（自提）</el-divider>
+        <el-form-item label="门店名称">
+          <el-input v-model="form.storeName" />
+        </el-form-item>
+        <el-form-item label="门店地址">
+          <el-input v-model="form.storeAddress" />
+        </el-form-item>
+        <el-form-item label="营业时间">
+          <el-input v-model="form.businessHours" placeholder="如：10:00 - 21:00" />
+        </el-form-item>
+        <el-form-item label="门店电话">
+          <el-input v-model="form.storePhone" />
+        </el-form-item>
+
+        <el-divider content-position="left">公告</el-divider>
+        <el-form-item label="公告开关">
+          <el-switch v-model="form.announceEnabled" active-value="1" inactive-value="0" />
+        </el-form-item>
+        <el-form-item label="公告标题">
+          <el-input v-model="form.announceTitle" placeholder="请输入公告标题" />
+        </el-form-item>
+        <el-form-item label="公告内容">
+          <el-input v-model="form.announceContent" type="textarea" :rows="3" placeholder="请输入公告内容" />
+        </el-form-item>
+
+        <el-form-item>
+          <el-button type="primary" @click="submitForm" v-hasPermi="['kitchen:shop:edit']">保 存</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+  </div>
+</template>
+
+<script setup name="Shop">
+import { getShop, saveShop } from "@/api/kitchen/shop"
+
+const { proxy } = getCurrentInstance()
+
+const form = ref({})
+
+/** 加载店铺设置 */
+function loadShop() {
+  getShop().then(response => {
+    form.value = response.data || {}
+  })
+}
+
+/** 提交按钮 */
+function submitForm() {
+  saveShop(form.value).then(() => {
+    proxy.$modal.msgSuccess("保存成功")
+    loadShop()
+  })
+}
+
+loadShop()
+</script>
