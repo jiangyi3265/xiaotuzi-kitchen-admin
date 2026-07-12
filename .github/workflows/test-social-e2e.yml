@@ -1,0 +1,74 @@
+name: Test social features end to end
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run authenticated production smoke test
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          PORT="${SERVER_PORT:-22}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/xiaotuzi_test_key
+          chmod 600 ~/.ssh/xiaotuzi_test_key
+          ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/xiaotuzi_test_key -p "$PORT" "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOF'
+          set -euo pipefail
+          API='http://127.0.0.1:18081/api/wx'
+          DB="docker exec xiaotuzi-mysql sh -c"
+          mysql_exec() { docker exec xiaotuzi-mysql sh -c "mysql -Nse \"$1\" -uroot -p\"\$MYSQL_ROOT_PASSWORD\" ha"; }
+          json_get() { python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
+          TOKEN_A='codex_social_smoke_a'
+          TOKEN_B='codex_social_smoke_b'
+
+          mysql_exec "insert into kitchen_wx_user(openid,nickname,user_code,status,is_owner,create_time,del_flag) values('codex_smoke_a','联调用户A','CODEXA','0','0',sysdate(),'0') on duplicate key update nickname=values(nickname),status='0',del_flag='0';"
+          mysql_exec "insert into kitchen_wx_user(openid,nickname,user_code,status,is_owner,create_time,del_flag) values('codex_smoke_b','联调用户B','CODEXB','0','0',sysdate(),'0') on duplicate key update nickname=values(nickname),status='0',del_flag='0';"
+          USER_A="$(mysql_exec "select id from kitchen_wx_user where openid='codex_smoke_a' limit 1;")"
+          USER_B="$(mysql_exec "select id from kitchen_wx_user where openid='codex_smoke_b' limit 1;")"
+          DISH_ID="$(mysql_exec "select id from kitchen_dish where status='1' and del_flag='0' order by id limit 1;")"
+
+          cleanup() {
+            mysql_exec "delete from kitchen_order_item where order_id in (select id from kitchen_order where wx_user_id in ($USER_A,$USER_B)); delete from kitchen_user_notification where wx_user_id in ($USER_A,$USER_B); delete from kitchen_order where wx_user_id in ($USER_A,$USER_B); delete from kitchen_couple_anniversary where couple_id in (select id from kitchen_couple_space where user_a in ($USER_A,$USER_B) or user_b in ($USER_A,$USER_B)); delete from kitchen_couple_space where user_a in ($USER_A,$USER_B) or user_b in ($USER_A,$USER_B); delete from kitchen_group_item where room_id in (select room_id from kitchen_group_member where wx_user_id in ($USER_A,$USER_B)); delete from kitchen_group_member where wx_user_id in ($USER_A,$USER_B); delete from kitchen_group_room where owner_user_id in ($USER_A,$USER_B); delete from kitchen_region_application where wx_user_id in ($USER_A,$USER_B);" || true
+            docker exec xiaotuzi-redis sh -c "redis-cli -a \"\$REDIS_PASSWORD\" del wx_login_token:$TOKEN_A wx_login_token_iat:$TOKEN_A wx_login_token:$TOKEN_B wx_login_token_iat:$TOKEN_B >/dev/null" || true
+            mysql_exec "delete from kitchen_wx_user where id in ($USER_A,$USER_B);" || true
+          }
+          trap cleanup EXIT
+          cleanup
+          mysql_exec "insert into kitchen_wx_user(id,openid,nickname,user_code,status,is_owner,create_time,del_flag) values($USER_A,'codex_smoke_a','联调用户A','CODEXA','0','0',sysdate(),'0'),($USER_B,'codex_smoke_b','联调用户B','CODEXB','0','0',sysdate(),'0');"
+          NOW_MS="$(date +%s)000"
+          docker exec xiaotuzi-redis sh -c "redis-cli -a \"\$REDIS_PASSWORD\" set wx_login_token:$TOKEN_A $USER_A EX 3600 >/dev/null; redis-cli -a \"\$REDIS_PASSWORD\" set wx_login_token_iat:$TOKEN_A $NOW_MS EX 3600 >/dev/null; redis-cli -a \"\$REDIS_PASSWORD\" set wx_login_token:$TOKEN_B $USER_B EX 3600 >/dev/null; redis-cli -a \"\$REDIS_PASSWORD\" set wx_login_token_iat:$TOKEN_B $NOW_MS EX 3600 >/dev/null"
+
+          GROUP_CREATE="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"title":"线上联调聚餐"}' "$API/social/group/create")"
+          echo "$GROUP_CREATE" | grep -q '"code":200'
+          ROOM_ID="$(printf '%s' "$GROUP_CREATE" | json_get "['data']['id']")"
+          ROOM_CODE="$(printf '%s' "$GROUP_CREATE" | json_get "['data']['roomCode']")"
+          curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"roomCode\":\"$ROOM_CODE\"}" "$API/social/group/join" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"roomId\":$ROOM_ID,\"dishId\":$DISH_ID,\"quantity\":2}" "$API/social/group/item" | grep -q '"code":200'
+          GROUP_DETAIL="$(curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/$ROOM_ID")"
+          printf '%s' "$GROUP_DETAIL" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and len(d['data']['members'])==2 and len(d['data']['items'])==1 and 'aa' in d['data']"
+
+          COUPLE_CREATE="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"startDate":"2026-01-01"}' "$API/social/couple/create")"
+          echo "$COUPLE_CREATE" | grep -q '"code":200'
+          INVITE_CODE="$(printf '%s' "$COUPLE_CREATE" | json_get "['data']['inviteCode']")"
+          curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"inviteCode\":\"$INVITE_CODE\"}" "$API/social/couple/join" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"title":"联调纪念日","anniversaryDate":"2026-02-14"}' "$API/social/couple/anniversary" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_B" "$API/social/couple" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['userB'] is not None and len(d['data']['anniversaries'])==1"
+
+          ORDER="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"remoteFeed\":\"1\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit")"
+          echo "$ORDER" | grep -q '"code":200'
+          ORDER_ID="$(printf '%s' "$ORDER" | json_get "['orderId']")"
+          curl -fsS -H "wx-token: $TOKEN_B" "$API/order/my?pageNum=1&pageSize=20" | python3 -c "import json,sys; d=json.load(sys.stdin); assert any(str(x['id'])=='$ORDER_ID' for x in d['rows'])"
+          curl -fsS -H "wx-token: $TOKEN_B" "$API/social/notifications" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['unread']>=1"
+
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"applicantName":"联调用户A","phone":"13800000000","province":"测试省","city":"测试市","district":"测试区","address":"测试地址"}' "$API/region/apply" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/region/status?province=test&city=test&district=test" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['application']['auditStatus']=='0'"
+          echo 'All authenticated social and regional flows passed.'
+          EOF
