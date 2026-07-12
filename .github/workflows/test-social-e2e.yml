@@ -54,6 +54,10 @@ jobs:
           curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"roomId\":$ROOM_ID,\"dishId\":$DISH_ID,\"quantity\":2}" "$API/social/group/item" | grep -q '"code":200'
           GROUP_DETAIL="$(curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/$ROOM_ID")"
           printf '%s' "$GROUP_DETAIL" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and len(d['data']['members'])==2 and len(d['data']['items'])==1 and 'aa' in d['data']"
+          GROUP_ROOMS="$(curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/my")"
+          printf '%s' "$GROUP_ROOMS" | ROOM_ID="$ROOM_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert d['code']==200 and any(str(x['id'])==os.environ['ROOM_ID'] for x in d['data'])"
+          GROUP_QR="$(curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/qrcode/$ROOM_ID")"
+          printf '%s' "$GROUP_QR" | ROOM_CODE="$ROOM_CODE" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['roomCode']==os.environ['ROOM_CODE'] and d['data']['image'].startswith('data:image/png;base64,') and len(d['data']['image'])>500"
 
           COUPLE_CREATE="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"startDate":"2026-01-01"}' "$API/social/couple/create")"
           echo "$COUPLE_CREATE" | grep -q '"code":200'
