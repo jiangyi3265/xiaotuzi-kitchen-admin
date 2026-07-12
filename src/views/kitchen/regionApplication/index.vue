@@ -4,8 +4,10 @@
       <el-form-item label="申请人"><el-input v-model="query.applicantName" clearable /></el-form-item>
       <el-form-item label="城市"><el-input v-model="query.city" clearable /></el-form-item>
       <el-form-item label="区县"><el-input v-model="query.district" clearable /></el-form-item>
+      <el-form-item label="审核状态"><el-select v-model="query.auditStatus" clearable style="width:130px"><el-option label="待审核" value="0"/><el-option label="已通过" value="1"/><el-option label="已驳回" value="2"/></el-select></el-form-item>
       <el-form-item><el-button type="primary" icon="Search" @click="load">查询</el-button></el-form-item>
     </el-form>
+    <el-alert title="区域是否开通以“审核已通过”且“区域服务已开启”为准；关闭开关后，小程序立即显示未开通。" type="info" :closable="false" show-icon class="mb16" />
     <el-table v-loading="loading" :data="rows">
       <el-table-column label="申请人" prop="applicantName" width="100" />
       <el-table-column label="电话" prop="phone" width="130" />
@@ -27,7 +29,7 @@
 import { listRegionApplication, auditRegionApplication, setRegionEnabled } from '@/api/kitchen/regionApplication'
 const { proxy } = getCurrentInstance()
 const loading=ref(false), rows=ref([]), total=ref(0)
-const query=reactive({pageNum:1,pageSize:10,applicantName:'',city:'',district:''})
+const query=reactive({pageNum:1,pageSize:10,applicantName:'',city:'',district:'',auditStatus:''})
 function load(){loading.value=true;listRegionApplication(query).then(r=>{rows.value=r.rows||[];total.value=r.total||0}).finally(()=>loading.value=false)}
 function statusText(v){return {'0':'待审核','1':'已通过','2':'已驳回'}[v]||'未知'}
 function statusType(v){return {'0':'warning','1':'success','2':'danger'}[v]||'info'}

@@ -58,6 +58,13 @@ jobs:
           printf '%s' "$GROUP_ROOMS" | ROOM_ID="$ROOM_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert d['code']==200 and any(str(x['id'])==os.environ['ROOM_ID'] for x in d['data'])"
           GROUP_QR="$(curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/qrcode/$ROOM_ID")"
           printf '%s' "$GROUP_QR" | ROOM_CODE="$ROOM_CODE" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['roomCode']==os.environ['ROOM_CODE'] and d['data']['image'].startswith('data:image/png;base64,') and len(d['data']['image'])>500"
+          GROUP_ORDER="$(curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"groupRoomId\":$ROOM_ID,\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":2}]}" "$API/order/submit")"
+          echo "$GROUP_ORDER" | grep -q '"code":200'
+          GROUP_ORDER_ID="$(printf '%s' "$GROUP_ORDER" | json_get "['orderId']")"
+          test "$(mysql_exec "select group_room_id from kitchen_order where id=$GROUP_ORDER_ID;")" = "$ROOM_ID"
+          curl -fsS -H "wx-token: $TOKEN_B" -X POST "$API/social/group/finish/$ROOM_ID" | grep -q '只有发起人可以结束聚餐'
+          curl -fsS -H "wx-token: $TOKEN_A" -X POST "$API/social/group/finish/$ROOM_ID" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/social/group/my" | ROOM_ID="$ROOM_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert not any(str(x['id'])==os.environ['ROOM_ID'] for x in d['data'])"
 
           COUPLE_CREATE="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"startDate":"2026-01-01"}' "$API/social/couple/create")"
           echo "$COUPLE_CREATE" | grep -q '"code":200'
@@ -66,13 +73,22 @@ jobs:
           curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"title":"联调纪念日","anniversaryDate":"2026-02-14"}' "$API/social/couple/anniversary" | grep -q '"code":200'
           curl -fsS -H "wx-token: $TOKEN_B" "$API/social/couple" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['userB'] is not None and len(d['data']['anniversaries'])==1"
 
+          COUPLE_ORDER="$(curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"coupleOrder\":\"1\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit")"
+          echo "$COUPLE_ORDER" | grep -q '"code":200'
+          COUPLE_ORDER_ID="$(printf '%s' "$COUPLE_ORDER" | json_get "['orderId']")"
+          test -n "$(mysql_exec "select couple_space_id from kitchen_order where id=$COUPLE_ORDER_ID;")"
+
           ORDER="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"remoteFeed\":\"1\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit")"
           echo "$ORDER" | grep -q '"code":200'
           ORDER_ID="$(printf '%s' "$ORDER" | json_get "['orderId']")"
           curl -fsS -H "wx-token: $TOKEN_B" "$API/order/my?pageNum=1&pageSize=20" | python3 -c "import json,sys; d=json.load(sys.stdin); assert any(str(x['id'])=='$ORDER_ID' for x in d['rows'])"
           curl -fsS -H "wx-token: $TOKEN_B" "$API/social/notifications" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['unread']>=1"
+          curl -fsS -H "wx-token: $TOKEN_B" -X POST "$API/social/couple/unbind" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/social/couple" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data'] is None"
 
           curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"applicantName":"联调用户A","phone":"13800000000","province":"测试省","city":"测试市","district":"测试区","address":"测试地址"}' "$API/region/apply" | grep -q '"code":200'
           curl -fsS -H "wx-token: $TOKEN_A" "$API/region/status?province=test&city=test&district=test" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['application']['auditStatus']=='0'"
+          curl -fsS "$API/region/opened" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and isinstance(d['data'],list)"
+          test "$(mysql_exec "select count(*) from information_schema.columns where table_schema=database() and table_name='kitchen_order' and column_name='group_room_id';")" = "1"
           echo 'All authenticated social and regional flows passed.'
           EOF

@@ -37,6 +37,7 @@
       <el-table-column type="selection" width="55" align="center" />
       <el-table-column label="订单号" align="center" prop="orderNo" width="160" />
       <el-table-column label="下单用户" align="center" prop="userNickname" />
+      <el-table-column label="订单来源" align="center" width="120"><template #default="scope"><el-tag v-if="scope.row.groupRoomId" type="success">多人聚餐</el-tag><el-tag v-else-if="scope.row.coupleSpaceId" type="danger">情侣空间</el-tag><span v-else>普通订单</span></template></el-table-column>
       <el-table-column label="服务方式" align="center" prop="serviceType">
         <template #default="scope">
           <dict-tag :options="kitchen_service_type" :value="scope.row.serviceType" />
@@ -82,6 +83,7 @@
       <el-descriptions :column="2" border>
         <el-descriptions-item label="订单号">{{ detail.orderNo }}</el-descriptions-item>
         <el-descriptions-item label="下单用户">{{ detail.userNickname }}</el-descriptions-item>
+        <el-descriptions-item label="订单来源">{{ detail.groupRoomId ? `多人聚餐 #${detail.groupRoomId}` : detail.coupleSpaceId ? `情侣空间 #${detail.coupleSpaceId}` : '普通订单' }}</el-descriptions-item>
         <el-descriptions-item label="服务方式">
           <dict-tag :options="kitchen_service_type" :value="detail.serviceType" />
         </el-descriptions-item>
