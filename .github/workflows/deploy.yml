@@ -68,7 +68,8 @@ jobs:
           rm -f "/tmp/$ARCHIVE_NAME"
 
           cd "$DEPLOY_PATH"
-          docker compose -f docker-compose.deploy.yml up -d --build admin
+          docker compose -f docker-compose.deploy.yml build admin
+          docker compose -f docker-compose.deploy.yml up -d --no-deps admin
           for i in $(seq 1 20); do
             if curl -fsSI http://127.0.0.1:18080/ >/dev/null; then
               break
