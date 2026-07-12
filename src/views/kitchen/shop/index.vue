@@ -35,18 +35,18 @@
           <image-upload v-model="form.alipayQr" :limit="1" />
         </el-form-item>
 
-        <el-divider content-position="left">门店（自提）</el-divider>
-        <el-form-item label="门店名称">
-          <el-input v-model="form.storeName" />
+        <el-divider content-position="left">附近的菜市场</el-divider>
+        <el-form-item label="市场名称">
+		  <el-input v-model="form.storeName" placeholder="请输入菜市场名称" />
         </el-form-item>
-        <el-form-item label="门店地址">
-          <el-input v-model="form.storeAddress" />
+        <el-form-item label="市场地址">
+		  <el-input v-model="form.storeAddress" placeholder="请输入菜市场详细地址" />
         </el-form-item>
         <el-form-item label="营业时间">
           <el-input v-model="form.businessHours" placeholder="如：10:00 - 21:00" />
         </el-form-item>
-        <el-form-item label="门店电话">
-          <el-input v-model="form.storePhone" />
+        <el-form-item label="联系电话">
+		  <el-input v-model="form.storePhone" placeholder="请输入联系电话" />
         </el-form-item>
 
         <el-divider content-position="left">公告</el-divider>
