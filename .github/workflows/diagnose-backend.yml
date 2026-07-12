@@ -1,0 +1,31 @@
+name: Diagnose backend runtime
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read backend diagnostics
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          PORT="${SERVER_PORT:-22}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/xiaotuzi_diagnose_key
+          chmod 600 ~/.ssh/xiaotuzi_diagnose_key
+          ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/xiaotuzi_diagnose_key -p "$PORT" "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOF'
+          set -euo pipefail
+          echo '=== containers ==='
+          docker ps --format 'table {{.Names}}\t{{.Status}}'
+          echo '=== recent backend errors ==='
+          docker logs xiaotuzi-backend --since 60m 2>&1 | grep -E -A 35 -B 5 'ERROR|Exception|Caused by' | tail -n 500 || true
+          echo '=== social tables ==='
+          docker exec xiaotuzi-mysql sh -c 'mysql -Nse "show create table kitchen_group_room; show create table kitchen_group_member; show create table kitchen_couple_space;" -uroot -p"$MYSQL_ROOT_PASSWORD" ha'
+          EOF
