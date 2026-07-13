@@ -36,7 +36,7 @@ jobs:
           DISH_ID="$(mysql_exec "select id from kitchen_dish where status='1' and del_flag='0' order by id limit 1;")"
 
           cleanup() {
-            mysql_exec "delete from kitchen_order_item where order_id in (select id from kitchen_order where wx_user_id in ($USER_A,$USER_B)); delete from kitchen_user_notification where wx_user_id in ($USER_A,$USER_B); delete from kitchen_order where wx_user_id in ($USER_A,$USER_B); delete from kitchen_couple_anniversary where couple_id in (select id from kitchen_couple_space where user_a in ($USER_A,$USER_B) or user_b in ($USER_A,$USER_B)); delete from kitchen_couple_space where user_a in ($USER_A,$USER_B) or user_b in ($USER_A,$USER_B); delete from kitchen_group_item where room_id in (select room_id from kitchen_group_member where wx_user_id in ($USER_A,$USER_B)); delete from kitchen_group_member where wx_user_id in ($USER_A,$USER_B); delete from kitchen_group_room where owner_user_id in ($USER_A,$USER_B); delete from kitchen_region_application where wx_user_id in ($USER_A,$USER_B); delete from kitchen_service_application where wx_user_id in ($USER_A,$USER_B);" || true
+            mysql_exec "delete from kitchen_order_item where order_id in (select id from kitchen_order where wx_user_id in ($USER_A,$USER_B)); delete from kitchen_user_notification where wx_user_id in ($USER_A,$USER_B); delete from kitchen_order where wx_user_id in ($USER_A,$USER_B); delete from kitchen_couple_anniversary where couple_id in (select id from kitchen_couple_space where user_a in ($USER_A,$USER_B) or user_b in ($USER_A,$USER_B)); delete from kitchen_couple_space where user_a in ($USER_A,$USER_B) or user_b in ($USER_A,$USER_B); delete from kitchen_group_item where room_id in (select room_id from kitchen_group_member where wx_user_id in ($USER_A,$USER_B)); delete from kitchen_group_member where wx_user_id in ($USER_A,$USER_B); delete from kitchen_group_room where owner_user_id in ($USER_A,$USER_B); delete from kitchen_region_application where wx_user_id in ($USER_A,$USER_B); delete from kitchen_service_application where wx_user_id in ($USER_A,$USER_B); delete from kitchen_feedback where wx_user_id in ($USER_A,$USER_B);" || true
             docker exec xiaotuzi-redis sh -c "redis-cli -a \"\$REDIS_PASSWORD\" del wx_login_token:$TOKEN_A wx_login_token_iat:$TOKEN_A wx_login_token:$TOKEN_B wx_login_token_iat:$TOKEN_B >/dev/null" || true
             mysql_exec "delete from kitchen_wx_user where id in ($USER_A,$USER_B);" || true
           }
@@ -62,6 +62,8 @@ jobs:
           echo "$GROUP_ORDER" | grep -q '"code":200'
           GROUP_ORDER_ID="$(printf '%s' "$GROUP_ORDER" | json_get "['orderId']")"
           test "$(mysql_exec "select group_room_id from kitchen_order where id=$GROUP_ORDER_ID;")" = "$ROOM_ID"
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/order/my?pageNum=1&pageSize=20" | GROUP_ORDER_ID="$GROUP_ORDER_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert any(str(x['id'])==os.environ['GROUP_ORDER_ID'] and x['groupRoomId'] for x in d['rows'])"
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/order/detail/$GROUP_ORDER_ID" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['groupRoomId'] is not None"
           curl -fsS -H "wx-token: $TOKEN_B" -X POST "$API/social/group/finish/$ROOM_ID" | grep -q '只有发起人可以结束聚餐'
           curl -fsS -H "wx-token: $TOKEN_A" -X POST "$API/social/group/finish/$ROOM_ID" | grep -q '"code":200'
           curl -fsS -H "wx-token: $TOKEN_A" "$API/social/group/my" | ROOM_ID="$ROOM_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert not any(str(x['id'])==os.environ['ROOM_ID'] for x in d['data'])"
@@ -77,6 +79,7 @@ jobs:
           echo "$COUPLE_ORDER" | grep -q '"code":200'
           COUPLE_ORDER_ID="$(printf '%s' "$COUPLE_ORDER" | json_get "['orderId']")"
           test -n "$(mysql_exec "select couple_space_id from kitchen_order where id=$COUPLE_ORDER_ID;")"
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/order/my?pageNum=1&pageSize=20" | COUPLE_ORDER_ID="$COUPLE_ORDER_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert any(str(x['id'])==os.environ['COUPLE_ORDER_ID'] and x['coupleSpaceId'] for x in d['rows'])"
 
           ORDER="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"remoteFeed\":\"1\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit")"
           echo "$ORDER" | grep -q '"code":200'
@@ -95,6 +98,9 @@ jobs:
           CHEF_APPLY="$(curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d '{"applicationType":"1","applicantName":"联调厨师","phone":"13900000000","province":"测试省","city":"测试市","district":"测试区","address":"测试地址","skillTag":"家常菜","experience":"厨师联调"}' "$API/service-application/apply")"
           echo "$CHEF_APPLY" | grep -q '"code":200'
           curl -fsS -H "wx-token: $TOKEN_B" "$API/service-application/my?applicationType=1" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['applicationType']=='1' and d['data']['auditStatus']=='0'"
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"feedbackType":"0","content":"线上反馈与建议联调内容","contact":"CODEXA"}' "$API/feedback" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/feedback/my" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and any(x['content']=='线上反馈与建议联调内容' and x['handleStatus']=='0' for x in d['data'])"
           test "$(mysql_exec "select count(*) from information_schema.columns where table_schema=database() and table_name='kitchen_order' and column_name='group_room_id';")" = "1"
+          test "$(mysql_exec "select count(*) from information_schema.columns where table_schema=database() and table_name='kitchen_shop' and column_name in ('stock_group_qr','stock_group_name','stock_group_notice');")" = "3"
           echo 'All authenticated social and regional flows passed.'
           EOF

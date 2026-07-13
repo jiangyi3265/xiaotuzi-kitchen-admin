@@ -49,6 +49,18 @@
 		  <el-input v-model="form.storePhone" placeholder="请输入联系电话" />
         </el-form-item>
 
+        <el-divider content-position="left">商家提前备货群</el-divider>
+        <el-alert title="小程序用户可在提交订单页查看群二维码，提前把采购清单发给商家备货。" type="info" :closable="false" show-icon style="margin-bottom: 18px" />
+        <el-form-item label="群名称">
+          <el-input v-model="form.stockGroupName" placeholder="如：今日食材提前备货群" />
+        </el-form-item>
+        <el-form-item label="群二维码">
+          <image-upload v-model="form.stockGroupQr" :limit="1" />
+        </el-form-item>
+        <el-form-item label="入群说明">
+          <el-input v-model="form.stockGroupNotice" type="textarea" :rows="3" maxlength="300" show-word-limit placeholder="说明入群方式、备货时间和取货规则" />
+        </el-form-item>
+
         <el-divider content-position="left">公告</el-divider>
         <el-form-item label="公告开关">
           <el-switch v-model="form.announceEnabled" active-value="1" inactive-value="0" />
