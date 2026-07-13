@@ -52,6 +52,11 @@ jobs:
           curl -fsS "$API/dish/list?pageNum=1&pageSize=20&todayType=hotpot" | DISH_ID="$DISH_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert d['code']==200 and any(str(x['id'])==os.environ['DISH_ID'] and x['todayType']=='hotpot' for x in d['rows'])"
           if [ "$ORIGINAL_TODAY_TYPE" = "__NULL__" ]; then mysql_exec "update kitchen_dish set today_type=null where id=$DISH_ID;"; else mysql_exec "update kitchen_dish set today_type='$ORIGINAL_TODAY_TYPE' where id=$DISH_ID;"; fi
 
+          STOCK_ORDER="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"remark\":\"菜市场方式：商家提前备货群\\n备注：线上备货清单联调\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":2}]}" "$API/order/submit")"
+          echo "$STOCK_ORDER" | grep -q '"code":200'
+          STOCK_ORDER_ID="$(printf '%s' "$STOCK_ORDER" | json_get "['orderId']")"
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/order/detail/$STOCK_ORDER_ID" | DISH_ID="$DISH_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); o=d['data']; assert d['code']==200 and '商家提前备货群' in o['remark'] and len(o['items'])==1 and str(o['items'][0]['dishId'])==os.environ['DISH_ID'] and int(o['items'][0]['quantity'])==2"
+
           GROUP_CREATE="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"title":"线上联调聚餐"}' "$API/social/group/create")"
           echo "$GROUP_CREATE" | grep -q '"code":200'
           ROOM_ID="$(printf '%s' "$GROUP_CREATE" | json_get "['data']['id']")"
@@ -115,5 +120,5 @@ jobs:
           test "$(mysql_exec "select count(*) from information_schema.columns where table_schema=database() and table_name='kitchen_shop' and column_name in ('stock_group_qr','stock_group_name','stock_group_notice');")" = "3"
           test "$(mysql_exec "select count(*) from information_schema.columns where table_schema=database() and table_name='kitchen_dish' and column_name='today_type';")" = "1"
           test "$(mysql_exec "select count(*) from information_schema.tables where table_schema=database() and table_name='kitchen_couple_item';")" = "1"
-          echo 'All authenticated social, regional, and schedule flows passed.'
+          echo 'All authenticated social, regional, stock-list, and schedule flows passed.'
           EOF

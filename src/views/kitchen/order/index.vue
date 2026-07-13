@@ -40,7 +40,10 @@
       <el-table-column label="订单来源" align="center" width="120"><template #default="scope"><el-tag v-if="scope.row.groupRoomId" type="success">多人聚餐</el-tag><el-tag v-else-if="scope.row.coupleSpaceId" type="danger">情侣空间</el-tag><span v-else>普通订单</span></template></el-table-column>
       <el-table-column label="服务方式" align="center" prop="serviceType">
         <template #default="scope">
-          <dict-tag :options="kitchen_service_type" :value="scope.row.serviceType" />
+          <div class="service-tags">
+            <dict-tag :options="kitchen_service_type" :value="scope.row.serviceType" />
+            <el-tag v-if="isStockOrder(scope.row)" type="warning" size="small">备货清单</el-tag>
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="厨师" align="center" prop="chefName" />
@@ -61,8 +64,9 @@
           <span>{{ parseTime(scope.row.createTime) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" width="180" class-name="small-padding fixed-width">
+      <el-table-column label="操作" align="center" width="250" class-name="small-padding fixed-width">
         <template #default="scope">
+          <el-button v-if="isStockOrder(scope.row)" link type="warning" icon="DocumentCopy" @click="handleCopyStock(scope.row)" v-hasPermi="['kitchen:order:query']">复制清单</el-button>
           <el-button link type="primary" icon="View" @click="handleDetail(scope.row)" v-hasPermi="['kitchen:order:query']">详情</el-button>
           <el-button link type="primary" icon="Promotion" @click="handleStatus(scope.row)" v-hasPermi="['kitchen:order:edit']">改状态</el-button>
           <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['kitchen:order:remove']">删除</el-button>
@@ -93,6 +97,13 @@
         <el-descriptions-item label="地址" :span="2">{{ detail.receiverAddress }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ detail.remark }}</el-descriptions-item>
       </el-descriptions>
+      <div v-if="isStockOrder(detail)" class="stock-copy-panel">
+        <div>
+          <strong>商家提前备货清单</strong>
+          <span>复制后可直接粘贴到微信发送</span>
+        </div>
+        <el-button type="primary" icon="DocumentCopy" @click="copyStockList(detail)">一键复制备货清单</el-button>
+      </div>
       <el-table :data="detail.items" style="margin-top: 15px">
         <el-table-column label="菜品" prop="dishName" />
         <el-table-column label="规格" prop="specJson" />
@@ -187,6 +198,52 @@ function handleDetail(row) {
   })
 }
 
+function isStockOrder(order) {
+  return String(order?.remark || '').includes('商家提前备货群')
+}
+
+function buildStockList(order) {
+  const items = Array.isArray(order?.items) ? order.items : []
+  const lines = ['【商家提前备货清单】']
+  if (order?.orderNo) lines.push(`订单号：${order.orderNo}`)
+  if (order?.userNickname) lines.push(`下单用户：${order.userNickname}`)
+  lines.push('', '菜品清单：')
+  items.forEach((item, index) => lines.push(`${index + 1}. ${item.dishName || '菜品'} × ${item.quantity || 1}`))
+  lines.push('', `合计：${items.length} 种菜，共 ${order?.totalCount || 0} 份`)
+  const note = String(order?.remark || '')
+    .split('\n')
+    .filter(line => line && !line.startsWith('用餐类型：') && !line.startsWith('菜市场方式：'))
+    .join('；')
+  if (note) lines.push(`备注：${note}`)
+  lines.push('请确认库存和备货时间，谢谢。')
+  return lines.join('\n')
+}
+
+async function writeClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (e) {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+  }
+}
+
+async function copyStockList(order) {
+  await writeClipboard(buildStockList(order))
+  proxy.$modal.msgSuccess('备货清单已复制，可粘贴到微信发送')
+}
+
+async function handleCopyStock(row) {
+  const response = await getOrder(row.id)
+  await copyStockList(response.data)
+}
+
 /** 改状态按钮操作 */
 function handleStatus(row) {
   statusForm.value = { id: row.id, orderStatus: row.orderStatus }
@@ -222,3 +279,11 @@ function handleExport() {
 
 getList()
 </script>
+
+<style scoped>
+.service-tags { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.stock-copy-panel { margin-top: 16px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid #dcebe6; border-radius: 8px; background: #f3faf7; }
+.stock-copy-panel > div { display: flex; flex-direction: column; gap: 5px; }
+.stock-copy-panel strong { color: #26332f; font-size: 15px; }
+.stock-copy-panel span { color: #73817c; font-size: 13px; }
+</style>
