@@ -34,9 +34,11 @@ jobs:
           USER_A="$(mysql_exec "select id from kitchen_wx_user where openid='codex_smoke_a' limit 1;")"
           USER_B="$(mysql_exec "select id from kitchen_wx_user where openid='codex_smoke_b' limit 1;")"
           DISH_ID="$(mysql_exec "select id from kitchen_dish where status='1' and del_flag='0' order by id limit 1;")"
+          ORIGINAL_TODAY_TYPE="$(mysql_exec "select ifnull(today_type,'__NULL__') from kitchen_dish where id=$DISH_ID;")"
 
           cleanup() {
             mysql_exec "delete from kitchen_order_item where order_id in (select id from kitchen_order where wx_user_id in ($USER_A,$USER_B)); delete from kitchen_user_notification where wx_user_id in ($USER_A,$USER_B); delete from kitchen_order where wx_user_id in ($USER_A,$USER_B); delete from kitchen_couple_anniversary where couple_id in (select id from kitchen_couple_space where user_a in ($USER_A,$USER_B) or user_b in ($USER_A,$USER_B)); delete from kitchen_couple_space where user_a in ($USER_A,$USER_B) or user_b in ($USER_A,$USER_B); delete from kitchen_group_item where room_id in (select room_id from kitchen_group_member where wx_user_id in ($USER_A,$USER_B)); delete from kitchen_group_member where wx_user_id in ($USER_A,$USER_B); delete from kitchen_group_room where owner_user_id in ($USER_A,$USER_B); delete from kitchen_region_application where wx_user_id in ($USER_A,$USER_B); delete from kitchen_service_application where wx_user_id in ($USER_A,$USER_B); delete from kitchen_feedback where wx_user_id in ($USER_A,$USER_B);" || true
+            if [ "$ORIGINAL_TODAY_TYPE" = "__NULL__" ]; then mysql_exec "update kitchen_dish set today_type=null where id=$DISH_ID;" || true; else mysql_exec "update kitchen_dish set today_type='$ORIGINAL_TODAY_TYPE' where id=$DISH_ID;" || true; fi
             docker exec xiaotuzi-redis sh -c "redis-cli -a \"\$REDIS_PASSWORD\" del wx_login_token:$TOKEN_A wx_login_token_iat:$TOKEN_A wx_login_token:$TOKEN_B wx_login_token_iat:$TOKEN_B >/dev/null" || true
             mysql_exec "delete from kitchen_wx_user where id in ($USER_A,$USER_B);" || true
           }
@@ -45,6 +47,10 @@ jobs:
           mysql_exec "insert into kitchen_wx_user(id,openid,nickname,user_code,status,is_owner,create_time,del_flag) values($USER_A,'codex_smoke_a','联调用户A','CODEXA','0','0',sysdate(),'0'),($USER_B,'codex_smoke_b','联调用户B','CODEXB','0','0',sysdate(),'0');"
           NOW_MS="$(date +%s)000"
           docker exec xiaotuzi-redis sh -c "redis-cli -a \"\$REDIS_PASSWORD\" set wx_login_token:$TOKEN_A $USER_A EX 3600 >/dev/null; redis-cli -a \"\$REDIS_PASSWORD\" set wx_login_token_iat:$TOKEN_A $NOW_MS EX 3600 >/dev/null; redis-cli -a \"\$REDIS_PASSWORD\" set wx_login_token:$TOKEN_B $USER_B EX 3600 >/dev/null; redis-cli -a \"\$REDIS_PASSWORD\" set wx_login_token_iat:$TOKEN_B $NOW_MS EX 3600 >/dev/null"
+
+          mysql_exec "update kitchen_dish set today_type='hotpot' where id=$DISH_ID;"
+          curl -fsS "$API/dish/list?pageNum=1&pageSize=20&todayType=hotpot" | DISH_ID="$DISH_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert d['code']==200 and any(str(x['id'])==os.environ['DISH_ID'] and x['todayType']=='hotpot' for x in d['rows'])"
+          if [ "$ORIGINAL_TODAY_TYPE" = "__NULL__" ]; then mysql_exec "update kitchen_dish set today_type=null where id=$DISH_ID;"; else mysql_exec "update kitchen_dish set today_type='$ORIGINAL_TODAY_TYPE' where id=$DISH_ID;"; fi
 
           GROUP_CREATE="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d '{"title":"线上联调聚餐"}' "$API/social/group/create")"
           echo "$GROUP_CREATE" | grep -q '"code":200'
@@ -102,5 +108,6 @@ jobs:
           curl -fsS -H "wx-token: $TOKEN_A" "$API/feedback/my" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and any(x['content']=='线上反馈与建议联调内容' and x['handleStatus']=='0' for x in d['data'])"
           test "$(mysql_exec "select count(*) from information_schema.columns where table_schema=database() and table_name='kitchen_order' and column_name='group_room_id';")" = "1"
           test "$(mysql_exec "select count(*) from information_schema.columns where table_schema=database() and table_name='kitchen_shop' and column_name in ('stock_group_qr','stock_group_name','stock_group_notice');")" = "3"
-          echo 'All authenticated social and regional flows passed.'
+          test "$(mysql_exec "select count(*) from information_schema.columns where table_schema=database() and table_name='kitchen_dish' and column_name='today_type';")" = "1"
+          echo 'All authenticated social, regional, and schedule flows passed.'
           EOF

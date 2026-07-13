@@ -21,6 +21,12 @@
           <el-option v-for="dict in kitchen_dish_status" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
+      <el-form-item label="今日安排" prop="todayType">
+        <el-select v-model="queryParams.todayType" placeholder="展示位置" clearable style="width: 160px">
+          <el-option label="火锅类" value="hotpot" />
+          <el-option label="烧烤" value="barbecue" />
+        </el-select>
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
         <el-button icon="Refresh" @click="resetQuery">重置</el-button>
@@ -52,6 +58,12 @@
       </el-table-column>
       <el-table-column label="菜品名称" align="left" prop="dishName" />
       <el-table-column label="分类" align="center" prop="categoryName" />
+      <el-table-column label="今日安排" align="center" prop="todayType" width="100">
+        <template #default="scope">
+          <el-tag v-if="scope.row.todayType" type="success" effect="plain">{{ scope.row.todayType === 'hotpot' ? '火锅类' : '烧烤' }}</el-tag>
+          <span v-else class="text-muted">不展示</span>
+        </template>
+      </el-table-column>
       <el-table-column label="虚拟金额" align="center" prop="virtualPrice" width="90" />
       <el-table-column label="销量" align="center" prop="sales" width="80" />
       <el-table-column label="难度" align="center" prop="difficulty" width="80">
@@ -105,6 +117,12 @@
             </el-form-item>
             <el-form-item label="是否上架" prop="status">
               <el-switch v-model="form.status" active-value="1" inactive-value="0" />
+            </el-form-item>
+            <el-form-item label="今日安排" prop="todayType">
+              <el-select v-model="form.todayType" clearable placeholder="不展示在“其他”页">
+                <el-option label="火锅类" value="hotpot" />
+                <el-option label="烧烤" value="barbecue" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -244,7 +262,8 @@ const data = reactive({
     pageSize: 10,
     dishName: undefined,
     categoryId: undefined,
-    status: undefined
+    status: undefined,
+    todayType: undefined
   },
   rules: {
     dishName: [{ required: true, message: "菜品名称不能为空", trigger: "blur" }],
@@ -296,6 +315,7 @@ function reset() {
     portions: 2,
     orderNum: 0,
     status: "1",
+    todayType: undefined,
     specs: [],
     steps: []
   }
