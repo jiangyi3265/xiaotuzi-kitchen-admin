@@ -26,6 +26,24 @@ jobs:
           docker ps --format 'table {{.Names}}\t{{.Status}}'
           echo '=== recent backend errors ==='
           docker logs xiaotuzi-backend --since 60m 2>&1 | grep -E -A 35 -B 5 'ERROR|Exception|Caused by' | tail -n 500 || true
+          echo '=== backend artifact routes ==='
+          ARTIFACT="$(mktemp --suffix=.jar)"
+          docker cp xiaotuzi-backend:/app/app.jar "$ARTIFACT"
+          python3 - "$ARTIFACT" <<'PY'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as archive:
+              names = set(archive.namelist())
+          for name in (
+              "BOOT-INF/classes/com/ruoyi/web/controller/common/CaptchaController.class",
+              "BOOT-INF/classes/com/ruoyi/web/controller/system/SysLoginController.class",
+              "BOOT-INF/lib/ruoyi-system-3.9.1.jar",
+          ):
+              print(f"{name}: {'present' if name in names else 'missing'}")
+          PY
+          rm -f "$ARTIFACT"
+          echo '=== public admin endpoints ==='
+          curl -sS -i http://127.0.0.1:18081/captchaImage | head -n 20
+          curl -sS -i http://127.0.0.1:18081/getInfo | head -n 20
           echo '=== social tables ==='
           docker exec xiaotuzi-mysql sh -c 'mysql -Nse "show create table kitchen_group_room; show create table kitchen_group_member; show create table kitchen_couple_space;" -uroot -p"$MYSQL_ROOT_PASSWORD" ha'
           EOF
