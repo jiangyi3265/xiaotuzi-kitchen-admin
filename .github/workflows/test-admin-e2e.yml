@@ -40,13 +40,16 @@ jobs:
           mysql_exec "insert into sys_user(user_id,dept_id,user_name,nick_name,user_type,email,phonenumber,sex,avatar,password,status,del_flag,create_by,create_time,remark) values($TEST_USER_ID,103,'$TEST_USERNAME','联调管理员','00','','','0','','$PASSWORD_HASH','0','0','admin',sysdate(),'自动化联调临时账号'); insert into sys_user_role(user_id,role_id) values($TEST_USER_ID,1); update sys_config set config_value='false' where config_key='sys.account.captchaEnabled';"
           redis_exec "del 'sys_config:sys.account.captchaEnabled'"
 
+          echo 'Checking captcha configuration...'
           CAPTCHA_RESPONSE="$(curl -fsS "$API/captchaImage")"
-          printf '%s' "$CAPTCHA_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['captchaEnabled'] is False"
+          printf '%s' "$CAPTCHA_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('code')==200 and d.get('captchaEnabled') is False, {'code':d.get('code'),'captchaEnabled':d.get('captchaEnabled')}"
 
+          echo 'Checking admin login...'
           LOGIN_RESPONSE="$(curl -fsS -H 'Content-Type: application/json' -d '{\"username\":\"codex_admin_smoke\",\"password\":\"admin123\",\"code\":\"\",\"uuid\":\"\"}' "$API/login")"
-          TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d.get('token'); print(d['token'])")"
+          TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('code')==200 and d.get('token'), {'code':d.get('code'),'msg':d.get('msg')}; print(d['token'])")"
           AUTH="Authorization: Bearer $TOKEN"
 
+          echo 'Checking authenticated user and dynamic menus...'
           curl -fsS -H "$AUTH" "$API/getInfo" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['user']['userName']=='$TEST_USERNAME'"
           curl -fsS -H "$AUTH" "$API/getRouters" | python3 -c "import json,sys; d=json.load(sys.stdin); raw=str(d); expected=['kitchen/category/index','kitchen/dish/index','kitchen/order/index','kitchen/shop/index','kitchen/regionApplication/index','kitchen/serviceApplication/index','kitchen/feedback/index','kitchen/socialSpace/index']; assert d['code']==200 and all(x in raw for x in expected), [x for x in expected if x not in raw]"
 
