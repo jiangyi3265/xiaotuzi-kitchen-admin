@@ -45,7 +45,7 @@ jobs:
           printf '%s' "$CAPTCHA_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('code')==200 and d.get('captchaEnabled') is False, {'code':d.get('code'),'captchaEnabled':d.get('captchaEnabled')}"
 
           echo 'Checking admin login...'
-          LOGIN_RESPONSE="$(curl -fsS -H 'Content-Type: application/json' -d '{\"username\":\"codex_admin_smoke\",\"password\":\"admin123\",\"code\":\"\",\"uuid\":\"\"}' "$API/login")"
+          LOGIN_RESPONSE="$(curl -fsS -H 'Content-Type: application/json' -d '{"username":"codex_admin_smoke","password":"admin123","code":"","uuid":""}' "$API/login")"
           TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('code')==200 and d.get('token'), {'code':d.get('code'),'msg':d.get('msg')}; print(d['token'])")"
           AUTH="Authorization: Bearer $TOKEN"
 
