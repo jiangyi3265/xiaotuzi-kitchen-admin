@@ -1,0 +1,72 @@
+name: Test admin and backend end to end
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify admin login, menus, and kitchen management APIs
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          PORT="${SERVER_PORT:-22}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/xiaotuzi_admin_test_key
+          chmod 600 ~/.ssh/xiaotuzi_admin_test_key
+          ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/xiaotuzi_admin_test_key -p "$PORT" "$SERVER_USER@$SERVER_HOST" 'bash -s' <<'EOF'
+          set -euo pipefail
+          API='http://127.0.0.1:18080/prod-api'
+          TEST_USER_ID='900000001'
+          TEST_USERNAME='codex_admin_smoke'
+          PASSWORD_HASH='$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2'
+          mysql_exec() { docker exec xiaotuzi-mysql sh -c "mysql -Nse \"$1\" -uroot -p\"\$MYSQL_ROOT_PASSWORD\" ha"; }
+          redis_exec() { docker exec xiaotuzi-redis sh -c "redis-cli -a \"\$REDIS_PASSWORD\" $1 >/dev/null"; }
+
+          ORIGINAL_CAPTCHA="$(mysql_exec "select config_value from sys_config where config_key='sys.account.captchaEnabled' limit 1;")"
+          cleanup() {
+            mysql_exec "delete from sys_user_role where user_id=$TEST_USER_ID; delete from sys_user where user_id=$TEST_USER_ID; update sys_config set config_value='$ORIGINAL_CAPTCHA' where config_key='sys.account.captchaEnabled';" || true
+            redis_exec "del 'sys_config:sys.account.captchaEnabled'" || true
+          }
+          trap cleanup EXIT
+          cleanup
+
+          mysql_exec "insert into sys_user(user_id,dept_id,user_name,nick_name,user_type,email,phonenumber,sex,avatar,password,status,del_flag,create_by,create_time,remark) values($TEST_USER_ID,103,'$TEST_USERNAME','联调管理员','00','','','0','','$PASSWORD_HASH','0','0','admin',sysdate(),'自动化联调临时账号'); insert into sys_user_role(user_id,role_id) values($TEST_USER_ID,1); update sys_config set config_value='false' where config_key='sys.account.captchaEnabled';"
+          redis_exec "del 'sys_config:sys.account.captchaEnabled'"
+
+          CAPTCHA_RESPONSE="$(curl -fsS "$API/captchaImage")"
+          printf '%s' "$CAPTCHA_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['captchaEnabled'] is False"
+
+          LOGIN_RESPONSE="$(curl -fsS -H 'Content-Type: application/json' -d '{\"username\":\"codex_admin_smoke\",\"password\":\"admin123\",\"code\":\"\",\"uuid\":\"\"}' "$API/login")"
+          TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d.get('token'); print(d['token'])")"
+          AUTH="Authorization: Bearer $TOKEN"
+
+          curl -fsS -H "$AUTH" "$API/getInfo" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['user']['userName']=='$TEST_USERNAME'"
+          curl -fsS -H "$AUTH" "$API/getRouters" | python3 -c "import json,sys; d=json.load(sys.stdin); raw=str(d); expected=['kitchen/category/index','kitchen/dish/index','kitchen/order/index','kitchen/shop/index','kitchen/regionApplication/index','kitchen/serviceApplication/index','kitchen/feedback/index','kitchen/socialSpace/index']; assert d['code']==200 and all(x in raw for x in expected), [x for x in expected if x not in raw]"
+
+          for endpoint in \
+            'system/kitchen/category/list?pageNum=1&pageSize=1' \
+            'system/kitchen/dish/list?pageNum=1&pageSize=1' \
+            'system/kitchen/order/list?pageNum=1&pageSize=1' \
+            'system/kitchen/wxUser/list?pageNum=1&pageSize=1' \
+            'system/kitchen/rider/list?pageNum=1&pageSize=1' \
+            'system/kitchen/chef/list?pageNum=1&pageSize=1' \
+            'system/kitchen/comment/list?pageNum=1&pageSize=1' \
+            'system/kitchen/sharePost/list?pageNum=1&pageSize=1' \
+            'system/kitchen/regionApplication/list?pageNum=1&pageSize=1' \
+            'system/kitchen/serviceApplication/list?pageNum=1&pageSize=1' \
+            'system/kitchen/feedback/list?pageNum=1&pageSize=1' \
+            'system/kitchen/social/group/list?pageNum=1&pageSize=1' \
+            'system/kitchen/social/couple/list?pageNum=1&pageSize=1'
+          do
+            curl -fsS -H "$AUTH" "$API/$endpoint" | ENDPOINT="$endpoint" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert d.get('code')==200, (os.environ['ENDPOINT'],d)"
+          done
+          curl -fsS -H "$AUTH" "$API/system/kitchen/shop" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200"
+          echo 'Admin login, dynamic menus, proxy, and all kitchen management list APIs passed.'
+          EOF

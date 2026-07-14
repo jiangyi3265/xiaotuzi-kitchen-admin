@@ -77,5 +77,8 @@ jobs:
             sleep 2
           done
           curl -fsSI http://127.0.0.1:18080/ >/dev/null
+          CAPTCHA_RESPONSE="$(curl -fsS http://127.0.0.1:18080/prod-api/captchaImage)"
+          printf '%s' "$CAPTCHA_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d.get('captchaEnabled') in (True,False); assert not d.get('captchaEnabled') or (d.get('uuid') and len(d.get('img',''))>100)"
+          curl -fsS http://127.0.0.1:18080/prod-api/getInfo | grep -q '"code":401'
           docker compose -f docker-compose.deploy.yml ps
           EOF
