@@ -63,16 +63,36 @@ jobs:
           ROOM_CODE="$(printf '%s' "$GROUP_CREATE" | json_get "['data']['roomCode']")"
           curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"roomCode\":\"$ROOM_CODE\"}" "$API/social/group/join" | grep -q '"code":200'
           curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"roomId\":$ROOM_ID,\"dishId\":$DISH_ID,\"quantity\":2}" "$API/social/group/item" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"roomId\":$ROOM_ID,\"dishId\":$DISH_ID,\"delta\":-1}" "$API/social/group/item/quantity" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/$ROOM_ID" | python3 -c "import json,sys; d=json.load(sys.stdin); assert len(d['data']['items'])==1 and int(d['data']['items'][0]['quantity'])==1"
+          curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"roomId\":$ROOM_ID,\"dishId\":$DISH_ID,\"delta\":1}" "$API/social/group/item/quantity" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" -X POST "$API/social/group/clear/$ROOM_ID" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/social/group/$ROOM_ID" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['data']['items']==[]"
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"roomId\":$ROOM_ID,\"dishId\":$DISH_ID,\"quantity\":99}" "$API/social/group/item" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"roomId\":$ROOM_ID,\"dishId\":$DISH_ID,\"quantity\":1}" "$API/social/group/item" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/$ROOM_ID" | python3 -c "import json,sys; d=json.load(sys.stdin); assert int(d['data']['items'][0]['quantity'])==99"
+          curl -fsS -H "wx-token: $TOKEN_A" -X POST "$API/social/group/clear/$ROOM_ID" | grep -q '"code":200'
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"roomId\":$ROOM_ID,\"dishId\":$DISH_ID,\"quantity\":2}" "$API/social/group/item" | grep -q '"code":200'
           GROUP_DETAIL="$(curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/$ROOM_ID")"
           printf '%s' "$GROUP_DETAIL" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and len(d['data']['members'])==2 and len(d['data']['items'])==1 and 'aa' in d['data']"
           GROUP_ROOMS="$(curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/my")"
           printf '%s' "$GROUP_ROOMS" | ROOM_ID="$ROOM_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert d['code']==200 and any(str(x['id'])==os.environ['ROOM_ID'] for x in d['data'])"
           GROUP_QR="$(curl -fsS -H "wx-token: $TOKEN_B" "$API/social/group/qrcode/$ROOM_ID")"
           printf '%s' "$GROUP_QR" | ROOM_CODE="$ROOM_CODE" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['roomCode']==os.environ['ROOM_CODE'] and d['data']['image'].startswith('data:image/png;base64,') and len(d['data']['image'])>500"
-          GROUP_ORDER="$(curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"groupRoomId\":$ROOM_ID,\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":2}]}" "$API/order/submit")"
+          GROUP_PAYLOAD="{\"serviceType\":\"2\",\"groupRoomId\":$ROOM_ID,\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":2}]}"
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "$GROUP_PAYLOAD" "$API/order/submit" > /tmp/group_order_a.json &
+          GROUP_PID_A=$!
+          curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "$GROUP_PAYLOAD" "$API/order/submit" > /tmp/group_order_b.json &
+          GROUP_PID_B=$!
+          wait "$GROUP_PID_A"
+          wait "$GROUP_PID_B"
+          GROUP_ORDER="$(python3 -c 'import json; rows=[json.load(open("/tmp/group_order_a.json")),json.load(open("/tmp/group_order_b.json"))]; ok=[x for x in rows if x.get("code")==200]; assert len(ok)==1 and any(x.get("code")!=200 and "购物车为空" in x.get("msg","") for x in rows); print(json.dumps(ok[0],ensure_ascii=False))')"
           echo "$GROUP_ORDER" | grep -q '"code":200'
           GROUP_ORDER_ID="$(printf '%s' "$GROUP_ORDER" | json_get "['orderId']")"
           test "$(mysql_exec "select group_room_id from kitchen_order where id=$GROUP_ORDER_ID;")" = "$ROOM_ID"
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/social/group/$ROOM_ID" | DISH_ID="$DISH_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); room=d['data']; assert room['items']==[] and len(room['purchasedItems'])==1 and str(room['purchasedItems'][0]['dishId'])==os.environ['DISH_ID'] and int(room['purchasedItems'][0]['quantity'])==2 and float(room['purchasedTotal'])>=0"
+          curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"groupRoomId\":$ROOM_ID,\"items\":[{\"dishId\":$DISH_ID,\"quantity\":2}]}" "$API/order/submit" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']!=200 and '购物车为空' in d['msg']"
+          test "$(mysql_exec "select count(*) from kitchen_order where group_room_id=$ROOM_ID;")" = "1"
           curl -fsS -H "wx-token: $TOKEN_A" "$API/order/my?pageNum=1&pageSize=20" | GROUP_ORDER_ID="$GROUP_ORDER_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert any(str(x['id'])==os.environ['GROUP_ORDER_ID'] and x['groupRoomId'] for x in d['rows'])"
           curl -fsS -H "wx-token: $TOKEN_A" "$API/order/detail/$GROUP_ORDER_ID" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['groupRoomId'] is not None"
           curl -fsS -H "wx-token: $TOKEN_B" -X POST "$API/social/group/finish/$ROOM_ID" | grep -q '只有发起人可以结束聚餐'
@@ -90,12 +110,16 @@ jobs:
           curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"dishId\":$DISH_ID,\"quantity\":1}" "$API/social/couple/item" | grep -q '"code":200'
           curl -fsS -H "wx-token: $TOKEN_A" "$API/social/couple" | USER_A="$USER_A" USER_B="$USER_B" python3 -c "import json,os,sys; d=json.load(sys.stdin); items=d['data']['items']; assert len(items)==2 and {str(x['userId']) for x in items}=={os.environ['USER_A'],os.environ['USER_B']} and sum(int(x['quantity']) for x in items)==3"
 
-          COUPLE_ORDER="$(curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"coupleOrder\":\"1\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":3}]}" "$API/order/submit")"
+          COUPLE_ORDER="$(curl -fsS -H "wx-token: $TOKEN_B" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"coupleOrder\":\"1\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit")"
           echo "$COUPLE_ORDER" | grep -q '"code":200'
           COUPLE_ORDER_ID="$(printf '%s' "$COUPLE_ORDER" | json_get "['orderId']")"
           test -n "$(mysql_exec "select couple_space_id from kitchen_order where id=$COUPLE_ORDER_ID;")"
+          curl -fsS -H "wx-token: $TOKEN_A" "$API/order/detail/$COUPLE_ORDER_ID" | DISH_ID="$DISH_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); items=d['data']['items']; assert len(items)==1 and str(items[0]['dishId'])==os.environ['DISH_ID'] and int(items[0]['quantity'])==3"
           curl -fsS -H "wx-token: $TOKEN_A" "$API/order/my?pageNum=1&pageSize=20" | COUPLE_ORDER_ID="$COUPLE_ORDER_ID" python3 -c "import json,os,sys; d=json.load(sys.stdin); assert any(str(x['id'])==os.environ['COUPLE_ORDER_ID'] and x['coupleSpaceId'] for x in d['rows'])"
           curl -fsS -H "wx-token: $TOKEN_A" "$API/social/couple" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']==200 and d['data']['items']==[]"
+
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"9\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']!=200 and '用餐类型' in d['msg']"
+          curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"0\",\"receiverName\":\"联调用户\",\"receiverPhone\":\"123\",\"receiverAddress\":\"测试地址\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']!=200 and '手机号' in d['msg']"
 
           ORDER="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"remoteFeed\":\"1\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit")"
           echo "$ORDER" | grep -q '"code":200'
