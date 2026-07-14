@@ -121,7 +121,7 @@ jobs:
           curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"9\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']!=200 and '用餐类型' in d['msg']"
           curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"0\",\"receiverName\":\"联调用户\",\"receiverPhone\":\"123\",\"receiverAddress\":\"测试地址\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']!=200 and '手机号' in d['msg']"
 
-          ORDER="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"remoteFeed\":\"1\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit")"
+          ORDER="$(curl -fsS -H "wx-token: $TOKEN_A" -H 'Content-Type: application/json' -d "{\"serviceType\":\"2\",\"coupleOrder\":\"1\",\"remoteFeed\":\"1\",\"shareFlag\":\"0\",\"items\":[{\"dishId\":$DISH_ID,\"quantity\":1}]}" "$API/order/submit")"
           echo "$ORDER" | grep -q '"code":200'
           ORDER_ID="$(printf '%s' "$ORDER" | json_get "['orderId']")"
           curl -fsS -H "wx-token: $TOKEN_B" "$API/order/my?pageNum=1&pageSize=20" | python3 -c "import json,sys; d=json.load(sys.stdin); assert any(str(x['id'])=='$ORDER_ID' for x in d['rows'])"
