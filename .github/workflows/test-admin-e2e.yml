@@ -25,7 +25,7 @@ jobs:
           API='http://127.0.0.1:18080/prod-api'
           TEST_USER_ID='900000001'
           TEST_USERNAME='codex_admin_smoke'
-          PASSWORD_HASH='$2a$10$7JB720yubVSZvUI0rEqK/.VqGOZTH.ulu33dHOiBE8ByOhJIrdAu2'
+          PASSWORD_HASH_HEX='24326124313024374a4237323079756256535a765549307245714b2f2e5671474f5a54482e756c75333364484f6942453842794f684a497264417532'
           mysql_exec() { docker exec xiaotuzi-mysql sh -c "mysql -Nse \"$1\" -uroot -p\"\$MYSQL_ROOT_PASSWORD\" ha"; }
           redis_exec() { docker exec xiaotuzi-redis sh -c "redis-cli -a \"\$REDIS_PASSWORD\" $1 >/dev/null"; }
 
@@ -37,7 +37,7 @@ jobs:
           trap cleanup EXIT
           cleanup
 
-          mysql_exec "insert into sys_user(user_id,dept_id,user_name,nick_name,user_type,email,phonenumber,sex,avatar,password,status,del_flag,create_by,create_time,remark) values($TEST_USER_ID,103,'$TEST_USERNAME','联调管理员','00','','','0','','$PASSWORD_HASH','0','0','admin',sysdate(),'自动化联调临时账号'); insert into sys_user_role(user_id,role_id) values($TEST_USER_ID,1); update sys_config set config_value='false' where config_key='sys.account.captchaEnabled';"
+          mysql_exec "insert into sys_user(user_id,dept_id,user_name,nick_name,user_type,email,phonenumber,sex,avatar,password,status,del_flag,create_by,create_time,remark) values($TEST_USER_ID,103,'$TEST_USERNAME','联调管理员','00','','','0','',unhex('$PASSWORD_HASH_HEX'),'0','0','admin',sysdate(),'自动化联调临时账号'); insert into sys_user_role(user_id,role_id) values($TEST_USER_ID,1); update sys_config set config_value='false' where config_key='sys.account.captchaEnabled';"
           redis_exec "del 'sys_config:sys.account.captchaEnabled'"
 
           echo 'Checking captcha configuration...'
