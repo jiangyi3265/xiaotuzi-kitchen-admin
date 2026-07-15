@@ -104,6 +104,24 @@
         </div>
         <el-button type="primary" icon="DocumentCopy" @click="copyStockList(detail)">一键复制备货清单</el-button>
       </div>
+      <div v-if="groceryItems.length" class="grocery-panel">
+        <div class="grocery-panel-title">
+          <strong>食材采购规格</strong>
+          <span>以下数量由用户在采购清单中填写</span>
+        </div>
+        <el-table :data="groceryItems" size="small">
+          <el-table-column label="食材" prop="name" min-width="120" />
+          <el-table-column label="采购量/规格" min-width="140">
+            <template #default="scope"><strong>{{ scope.row.purchaseSpec || '待用户填写' }}</strong></template>
+          </el-table-column>
+          <el-table-column label="对应菜品" min-width="220">
+            <template #default="scope">{{ (scope.row.dishNames || []).join('、') || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="80">
+            <template #default="scope"><el-tag :type="scope.row.checked ? 'success' : 'info'" size="small">{{ scope.row.checked ? '已买' : '待买' }}</el-tag></template>
+          </el-table-column>
+        </el-table>
+      </div>
       <el-table :data="detail.items" style="margin-top: 15px">
         <el-table-column label="菜品" prop="dishName" />
         <el-table-column label="规格" prop="specJson" />
@@ -146,6 +164,7 @@ const multiple = ref(true)
 const total = ref(0)
 const detailOpen = ref(false)
 const detail = ref({ items: [] })
+const groceryItems = computed(() => parseGroceryItems(detail.value))
 const statusOpen = ref(false)
 const statusForm = ref({ id: undefined, orderStatus: undefined })
 
@@ -202,11 +221,25 @@ function isStockOrder(order) {
   return String(order?.remark || '').includes('商家提前备货群')
 }
 
+function parseGroceryItems(order) {
+  try {
+    const rows = typeof order?.groceryJson === 'string' ? JSON.parse(order.groceryJson) : order?.groceryJson
+    return Array.isArray(rows) ? rows : []
+  } catch (e) {
+    return []
+  }
+}
+
 function buildStockList(order) {
   const items = Array.isArray(order?.items) ? order.items : []
+  const groceries = parseGroceryItems(order)
   const lines = ['【商家提前备货清单】']
   if (order?.orderNo) lines.push(`订单号：${order.orderNo}`)
   if (order?.userNickname) lines.push(`下单用户：${order.userNickname}`)
+  if (groceries.length) {
+    lines.push('', '食材采购清单：')
+    groceries.forEach((item, index) => lines.push(`${index + 1}. ${item.name || '食材'}：${item.purchaseSpec || '数量待确认'}${Array.isArray(item.dishNames) && item.dishNames.length ? `（用于${item.dishNames.join('、')}）` : ''}`))
+  }
   lines.push('', '菜品清单：')
   items.forEach((item, index) => lines.push(`${index + 1}. ${item.dishName || '菜品'} × ${item.quantity || 1}`))
   lines.push('', `合计：${items.length} 种菜，共 ${order?.totalCount || 0} 份`)
@@ -286,4 +319,8 @@ getList()
 .stock-copy-panel > div { display: flex; flex-direction: column; gap: 5px; }
 .stock-copy-panel strong { color: #26332f; font-size: 15px; }
 .stock-copy-panel span { color: #73817c; font-size: 13px; }
+.grocery-panel { margin-top: 16px; border: 1px solid #e2ece8; border-radius: 8px; overflow: hidden; }
+.grocery-panel-title { padding: 12px 14px; display: flex; align-items: baseline; gap: 10px; background: #f7fbf9; }
+.grocery-panel-title strong { color: #26332f; font-size: 15px; }
+.grocery-panel-title span { color: #7b8883; font-size: 12px; }
 </style>
