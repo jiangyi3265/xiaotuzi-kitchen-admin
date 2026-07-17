@@ -19,6 +19,12 @@
           <image-upload v-model="form.banner" :limit="1" />
         </el-form-item>
 
+        <el-divider content-position="left">关注公众号</el-divider>
+        <el-alert title="该二维码会展示在小程序“我的”页面，用户可长按识别。" type="info" :closable="false" show-icon style="margin-bottom: 18px" />
+        <el-form-item label="公众号二维码">
+          <image-upload v-model="form.officialAccountQr" :limit="1" />
+        </el-form-item>
+
         <el-divider content-position="left">邀请下单</el-divider>
         <el-form-item label="邀请封面">
           <image-upload v-model="form.inviteCover" :limit="1" />
