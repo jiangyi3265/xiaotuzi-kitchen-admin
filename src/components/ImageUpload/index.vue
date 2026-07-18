@@ -174,41 +174,40 @@ function handleExceed() {
 function handleUploadSuccess(res, file) {
   if (res.code === 200) {
     uploadList.value.push({ name: res.fileName, url: res.fileName })
-    uploadedSuccessfully()
   } else {
-    number.value--
-    proxy.$modal.closeLoading()
-    proxy.$modal.msgError(res.msg)
-    proxy.$refs.imageUpload.handleRemove(file)
-    uploadedSuccessfully()
+    proxy.$modal.msgError(res.msg || "上传图片失败")
+    proxy.$refs.imageUpload?.handleRemove(file)
   }
+  settleUpload()
 }
 
 // 删除图片
 function handleDelete(file) {
+  if (number.value > 0) return
   const findex = fileList.value.map(f => f.name).indexOf(file.name)
-  if (findex > -1 && uploadList.value.length === number.value) {
+  if (findex > -1) {
     fileList.value.splice(findex, 1)
     emit("update:modelValue", listToString(fileList.value))
     return false
   }
 }
 
-// 上传结束处理
-function uploadedSuccessfully() {
-  if (number.value > 0 && uploadList.value.length === number.value) {
+// 统一结算每一个已受理的上传；全部结束后只回填一次
+function settleUpload() {
+  number.value = Math.max(0, number.value - 1)
+  if (number.value === 0) {
     fileList.value = fileList.value.filter(f => f.url !== undefined).concat(uploadList.value)
-    uploadList.value = []
-    number.value = 0
     emit("update:modelValue", listToString(fileList.value))
+    uploadList.value = []
     proxy.$modal.closeLoading()
   }
 }
 
 // 上传失败
-function handleUploadError() {
+function handleUploadError(_error, file) {
+  proxy.$refs.imageUpload?.handleRemove(file)
   proxy.$modal.msgError("上传图片失败")
-  proxy.$modal.closeLoading()
+  settleUpload()
 }
 
 // 预览

@@ -6,7 +6,7 @@
       </el-form-item>
       <el-form-item label="状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="分类状态" clearable style="width: 200px">
-          <el-option v-for="dict in kitchen_dish_status" :key="dict.value" :label="dict.label" :value="dict.value" />
+          <el-option v-for="dict in sys_normal_disable" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
       <el-form-item>
@@ -46,7 +46,7 @@
       <el-table-column label="排序" align="center" prop="orderNum" width="80" />
       <el-table-column label="状态" align="center" prop="status" width="90">
         <template #default="scope">
-          <dict-tag :options="kitchen_dish_status" :value="scope.row.status" />
+          <dict-tag :options="sys_normal_disable" :value="scope.row.status" />
         </template>
       </el-table-column>
       <el-table-column label="创建时间" align="center" prop="createTime" width="180">
@@ -70,7 +70,7 @@
           <el-tree-select
             v-model="form.parentId"
             :data="categoryOptions"
-            :props="{ value: 'id', label: 'catName', children: 'children' }"
+            :props="{ value: 'id', label: 'catName', children: 'children', disabled: 'disabled' }"
             value-key="id"
             placeholder="选择父分类(顶级请选顶级分类)"
             check-strictly
@@ -87,7 +87,7 @@
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="form.status">
-            <el-radio v-for="dict in kitchen_dish_status" :key="dict.value" :value="dict.value">{{ dict.label }}</el-radio>
+            <el-radio v-for="dict in sys_normal_disable" :key="dict.value" :value="dict.value">{{ dict.label }}</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
@@ -108,7 +108,7 @@
 import { listCategory, getCategory, delCategory, addCategory, updateCategory, treeCategory } from "@/api/kitchen/category"
 
 const { proxy } = getCurrentInstance()
-const { kitchen_dish_status } = proxy.useDict("kitchen_dish_status")
+const { sys_normal_disable } = proxy.useDict("sys_normal_disable")
 
 const categoryList = ref([])
 const categoryOptions = ref([])
@@ -141,10 +141,29 @@ function getList() {
   })
 }
 
+/** 构造可选父分类：编辑时排除自身子树，并禁用不能继续新增子级的节点 */
+function buildParentOptions(nodes, excludeId, ancestorDisabled = false) {
+  return (nodes || [])
+    .filter(node => excludeId == null || String(node.id) !== String(excludeId))
+    .map(node => {
+      const disabled = ancestorDisabled || String(node.status) === "1" || Number(node.catLevel) >= 3
+      return {
+        ...node,
+        disabled,
+        children: buildParentOptions(node.children, excludeId, disabled)
+      }
+    })
+}
+
 /** 查询父级下拉树结构 */
-function getTreeselect() {
+function getTreeselect(excludeId) {
   treeCategory().then(response => {
-    categoryOptions.value = [{ id: 0, catName: "顶级分类", children: response.data }]
+    categoryOptions.value = [{
+      id: 0,
+      catName: "顶级分类",
+      disabled: false,
+      children: buildParentOptions(response.data, excludeId)
+    }]
   })
 }
 
@@ -190,6 +209,14 @@ function toggleExpandAll() {
 
 /** 新增按钮操作 */
 function handleAdd(row) {
+  if (row?.id && String(row.status) === "1") {
+    proxy.$modal.msgWarning("停用分类不能新增子分类，请先启用该分类")
+    return
+  }
+  if (row?.id && Number(row.catLevel) >= 3) {
+    proxy.$modal.msgWarning("分类最多支持三级，当前分类不能再新增子分类")
+    return
+  }
   reset()
   getTreeselect()
   if (row != undefined && row.id) {
@@ -202,7 +229,7 @@ function handleAdd(row) {
 /** 修改按钮操作 */
 function handleUpdate(row) {
   reset()
-  getTreeselect()
+  getTreeselect(row.id)
   getCategory(row.id).then(response => {
     form.value = response.data
     open.value = true
