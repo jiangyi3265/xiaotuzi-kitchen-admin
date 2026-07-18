@@ -16,6 +16,10 @@ export function updateOrder(data) {
 export function changeOrderStatus(data) {
   return request({ url: '/system/kitchen/order/changeStatus', method: 'put', data: data })
 }
+// 确认线下收款状态
+export function changeOrderPayStatus(data) {
+  return request({ url: '/system/kitchen/order/changePayStatus', method: 'put', data: data })
+}
 // 删除订单
 export function delOrder(id) {
   return request({ url: '/system/kitchen/order/' + id, method: 'delete' })

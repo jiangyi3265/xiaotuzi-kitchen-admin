@@ -21,7 +21,7 @@
         <el-switch
           v-model="enabled"
           :loading="saving"
-          :disabled="saving || !config"
+          :disabled="saving || !configured || !canEdit"
           active-text="已开启（功能显示）"
           inactive-text="已关闭（功能隐藏）"
           inline-prompt
@@ -30,9 +30,17 @@
       </div>
 
       <el-alert
-        v-if="!config && !loading"
+        v-if="!configured && !loading"
         title="未找到配置项 wx.feature.enabled，可能后端 SQL 还未执行。请先在数据库初始化该配置后再操作。"
         type="warning"
+        :closable="false"
+        show-icon
+        style="margin-top: 16px"
+      />
+      <el-alert
+        v-else-if="!canEdit && !loading"
+        title="当前账号只有查看权限，不能修改小程序功能开关。"
+        type="info"
         :closable="false"
         show-icon
         style="margin-top: 16px"
@@ -42,35 +50,28 @@
 </template>
 
 <script setup name="AppletSwitch">
-import { listConfig, updateConfig, refreshCache } from "@/api/system/config"
-
-const CONFIG_KEY = "wx.feature.enabled"
+import { getAppletSwitch, updateAppletSwitch } from "@/api/kitchen/appletSwitch"
 
 const { proxy } = getCurrentInstance()
 
 const loading = ref(true)
 const saving = ref(false)
 const enabled = ref(false)
-// 存储该配置的完整对象（含 configId 等字段），更新时需要整对象提交
-const config = ref(null)
+const configured = ref(false)
+const canEdit = computed(() => proxy.$auth.hasPermi("applet:switch:edit"))
 
 /** 加载功能开关配置 */
 function loadConfig() {
   loading.value = true
-  listConfig({ configKey: CONFIG_KEY })
+  getAppletSwitch()
     .then(response => {
-      const row = (response.rows || []).find(item => item.configKey === CONFIG_KEY)
-      if (row) {
-        config.value = row
-        enabled.value = row.configValue === "true"
-      } else {
-        config.value = null
-        enabled.value = false
-        proxy.$modal.msgWarning("未找到配置项 " + CONFIG_KEY + "，可能后端 SQL 还未执行。")
-      }
+      const data = response.data || {}
+      configured.value = data.configured === true
+      enabled.value = data.enabled === true
+      if (!configured.value) proxy.$modal.msgWarning("未找到配置项 wx.feature.enabled，可能后端 SQL 还未执行。")
     })
     .catch(() => {
-      config.value = null
+      configured.value = false
       proxy.$modal.msgError("加载配置失败，请稍后重试。")
     })
     .finally(() => {
@@ -80,21 +81,15 @@ function loadConfig() {
 
 /** 切换开关 */
 function handleChange(val) {
-  if (!config.value) {
-    // 没有配置对象则回滚，避免误提交
-    enabled.value = false
-    proxy.$modal.msgWarning("配置项不存在，无法保存。")
+  if (!configured.value || !canEdit.value) {
+    enabled.value = !val
+    proxy.$modal.msgWarning(!configured.value ? "配置项不存在，无法保存。" : "当前账号没有修改权限。")
     return
   }
 
   saving.value = true
-  // 基于完整对象修改 configValue，保留 configId 等字段
-  const payload = { ...config.value, configValue: val ? "true" : "false" }
-
-  updateConfig(payload)
-    .then(() => refreshCache())
+  updateAppletSwitch(val)
     .then(() => {
-      config.value = payload
       proxy.$modal.msgSuccess("已保存，小程序稍后生效")
     })
     .catch(() => {

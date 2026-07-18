@@ -17,6 +17,11 @@
           <el-option v-for="dict in kitchen_order_status" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
+      <el-form-item label="收款状态" prop="payStatus">
+        <el-select v-model="queryParams.payStatus" placeholder="收款状态" clearable style="width: 200px">
+          <el-option v-for="dict in kitchen_pay_status" :key="dict.value" :label="dict.label" :value="dict.value" />
+        </el-select>
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
         <el-button icon="Refresh" @click="resetQuery">重置</el-button>
@@ -64,11 +69,14 @@
           <span>{{ parseTime(scope.row.createTime) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" width="250" class-name="small-padding fixed-width">
+      <el-table-column label="操作" align="center" width="340" class-name="small-padding fixed-width">
         <template #default="scope">
           <el-button v-if="isStockOrder(scope.row)" link type="warning" icon="DocumentCopy" @click="handleCopyStock(scope.row)" v-hasPermi="['kitchen:order:query']">复制清单</el-button>
           <el-button link type="primary" icon="View" @click="handleDetail(scope.row)" v-hasPermi="['kitchen:order:query']">详情</el-button>
-          <el-button link type="primary" icon="Promotion" @click="handleStatus(scope.row)" v-hasPermi="['kitchen:order:edit']">改状态</el-button>
+          <el-button v-if="canChangeStatus(scope.row)" link type="primary" icon="Promotion" @click="handleStatus(scope.row)" v-hasPermi="['kitchen:order:edit']">推进状态</el-button>
+          <el-button v-if="scope.row.payStatus === '1' || scope.row.orderStatus !== '4'" link :type="scope.row.payStatus === '1' ? 'warning' : 'success'" :icon="scope.row.payStatus === '1' ? 'RefreshLeft' : 'CircleCheck'" @click="handlePayment(scope.row)" v-hasPermi="['kitchen:order:edit']">
+            {{ scope.row.payStatus === '1' ? '撤销收款' : '标记收款' }}
+          </el-button>
           <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['kitchen:order:remove']">删除</el-button>
         </template>
       </el-table-column>
@@ -87,6 +95,12 @@
       <el-descriptions :column="2" border>
         <el-descriptions-item label="订单号">{{ detail.orderNo }}</el-descriptions-item>
         <el-descriptions-item label="下单用户">{{ detail.userNickname }}</el-descriptions-item>
+        <el-descriptions-item label="订单状态">
+          <dict-tag :options="kitchen_order_status" :value="detail.orderStatus" />
+        </el-descriptions-item>
+        <el-descriptions-item label="收款状态">
+          <dict-tag :options="kitchen_pay_status" :value="detail.payStatus" />
+        </el-descriptions-item>
         <el-descriptions-item label="订单来源">{{ detail.groupRoomId ? `多人聚餐 #${detail.groupRoomId}` : detail.coupleSpaceId ? `情侣空间 #${detail.coupleSpaceId}` : '普通订单' }}</el-descriptions-item>
         <el-descriptions-item label="服务方式">
           <dict-tag :options="kitchen_service_type" :value="detail.serviceType" />
@@ -97,6 +111,15 @@
         <el-descriptions-item label="地址" :span="2">{{ detail.receiverAddress }}</el-descriptions-item>
         <el-descriptions-item label="备注" :span="2">{{ detail.remark }}</el-descriptions-item>
       </el-descriptions>
+      <el-alert
+        v-if="detail.orderStatus === '3' && detail.payStatus === '0'"
+        class="payment-alert"
+        title="订单已完成，但尚未确认线下收款"
+        description="请核对微信、支付宝或现金收款记录后，在订单列表中点击“标记收款”。"
+        type="warning"
+        show-icon
+        :closable="false"
+      />
       <div v-if="isStockOrder(detail)" class="stock-copy-panel">
         <div>
           <strong>商家提前备货清单</strong>
@@ -134,15 +157,19 @@
     <!-- 改状态 -->
     <el-dialog title="修改订单状态" v-model="statusOpen" width="400px" append-to-body>
       <el-form label-width="90px">
-        <el-form-item label="订单状态">
-          <el-select v-model="statusForm.orderStatus" placeholder="选择状态">
-            <el-option v-for="dict in kitchen_order_status" :key="dict.value" :label="dict.label" :value="dict.value" />
+        <el-form-item label="当前状态">
+          <dict-tag :options="kitchen_order_status" :value="statusForm.currentStatus" />
+        </el-form-item>
+        <el-form-item label="下一状态">
+          <el-select v-model="statusForm.orderStatus" placeholder="请选择下一状态" style="width: 100%">
+            <el-option v-for="dict in availableStatusOptions" :key="dict.value" :label="dict.label" :value="dict.value" />
           </el-select>
         </el-form-item>
+        <el-alert v-if="statusForm.currentStatus === '5'" title="确认退款处理完成后，订单将关闭为已取消；若已收款，系统会同时撤销收款标记。" type="warning" show-icon :closable="false" />
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button type="primary" @click="submitStatus">确 定</el-button>
+          <el-button type="primary" :disabled="!statusForm.orderStatus" @click="submitStatus">确认推进</el-button>
           <el-button @click="statusOpen = false">取 消</el-button>
         </div>
       </template>
@@ -151,7 +178,7 @@
 </template>
 
 <script setup name="Order">
-import { listOrder, getOrder, delOrder, changeOrderStatus } from "@/api/kitchen/order"
+import { listOrder, getOrder, delOrder, changeOrderStatus, changeOrderPayStatus } from "@/api/kitchen/order"
 
 const { proxy } = getCurrentInstance()
 const { kitchen_service_type, kitchen_order_status, kitchen_pay_status } = proxy.useDict("kitchen_service_type", "kitchen_order_status", "kitchen_pay_status")
@@ -166,7 +193,19 @@ const detailOpen = ref(false)
 const detail = ref({ items: [] })
 const groceryItems = computed(() => parseGroceryItems(detail.value))
 const statusOpen = ref(false)
-const statusForm = ref({ id: undefined, orderStatus: undefined })
+const statusForm = ref({ id: undefined, currentStatus: undefined, orderStatus: undefined })
+
+const statusTransitions = {
+  '0': ['1', '4'],
+  '1': ['2', '4'],
+  '2': ['3', '4'],
+  '5': ['4']
+}
+
+const availableStatusOptions = computed(() => {
+  const values = statusTransitions[String(statusForm.value.currentStatus)] || []
+  return kitchen_order_status.value.filter(item => values.includes(String(item.value)))
+})
 
 const data = reactive({
   queryParams: {
@@ -175,7 +214,8 @@ const data = reactive({
     orderNo: undefined,
     receiverPhone: undefined,
     serviceType: undefined,
-    orderStatus: undefined
+    orderStatus: undefined,
+    payStatus: undefined
   }
 })
 
@@ -277,19 +317,50 @@ async function handleCopyStock(row) {
   await copyStockList(response.data)
 }
 
+function canChangeStatus(row) {
+  return (statusTransitions[String(row?.orderStatus)] || []).length > 0
+}
+
 /** 改状态按钮操作 */
 function handleStatus(row) {
-  statusForm.value = { id: row.id, orderStatus: row.orderStatus }
+  statusForm.value = {
+    id: row.id,
+    currentStatus: row.orderStatus,
+    orderStatus: undefined
+  }
   statusOpen.value = true
 }
 
 /** 提交订单状态 */
 function submitStatus() {
-  changeOrderStatus(statusForm.value).then(() => {
+  if (!statusForm.value.orderStatus) {
+    proxy.$modal.msgWarning("请选择下一状态")
+    return
+  }
+  changeOrderStatus({ id: statusForm.value.id, orderStatus: statusForm.value.orderStatus }).then(() => {
     proxy.$modal.msgSuccess("状态已更新")
     statusOpen.value = false
     getList()
   })
+}
+
+/** 线下收款确认，撤销收款需要二次确认 */
+function handlePayment(row) {
+  const received = row.payStatus === '1'
+  const nextPayStatus = received ? '0' : '1'
+  const actionText = received ? '撤销收款标记' : '标记为已收款'
+  const hint = received
+    ? '撤销后该订单会重新显示为未收款，请确认是纠正误操作或退款后的处理。'
+    : '请先核对微信、支付宝或现金收款记录。'
+  proxy.$modal.confirm(`确认将订单“${row.orderNo}”${actionText}吗？${hint}`).then(() => {
+    return changeOrderPayStatus({ id: row.id, payStatus: nextPayStatus })
+  }).then(() => {
+    proxy.$modal.msgSuccess(received ? '已撤销收款标记' : '已标记为已收款')
+    getList()
+    if (detailOpen.value && detail.value.id === row.id) {
+      getOrder(row.id).then(response => { detail.value = response.data })
+    }
+  }).catch(() => {})
 }
 
 /** 删除按钮操作 */
@@ -315,6 +386,7 @@ getList()
 
 <style scoped>
 .service-tags { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.payment-alert { margin-top: 16px; }
 .stock-copy-panel { margin-top: 16px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid #dcebe6; border-radius: 8px; background: #f3faf7; }
 .stock-copy-panel > div { display: flex; flex-direction: column; gap: 5px; }
 .stock-copy-panel strong { color: #26332f; font-size: 15px; }
