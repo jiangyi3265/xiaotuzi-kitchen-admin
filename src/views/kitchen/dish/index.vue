@@ -285,8 +285,8 @@ function getList() {
 
 /** 查询分类下拉树结构 */
 function getTreeselect() {
-  treeCategory().then(response => {
-    categoryOptions.value = response.data
+  treeCategory({ status: "0" }).then(response => {
+    categoryOptions.value = response.data || []
   })
 }
 
