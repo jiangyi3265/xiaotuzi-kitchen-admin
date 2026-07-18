@@ -47,7 +47,7 @@
       <el-table-column label="积分" align="center" prop="carrot" width="80" />
       <el-table-column label="是否店主" align="center" prop="isOwner" width="90">
         <template #default="scope">
-          <dict-tag :options="sys_yes_no" :value="scope.row.isOwner" />
+          <el-tag :type="scope.row.isOwner === '1' ? 'success' : 'info'">{{ scope.row.isOwner === '1' ? '是' : '否' }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="状态" align="center" width="80">
@@ -99,7 +99,8 @@
         </el-form-item>
         <el-form-item label="是否店主">
           <el-select v-model="form.isOwner" placeholder="请选择">
-            <el-option v-for="dict in sys_yes_no" :key="dict.value" :label="dict.label" :value="dict.value" />
+            <el-option label="否" value="0" />
+            <el-option label="是" value="1" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
@@ -123,8 +124,6 @@
 import { listWxUser, getWxUser, delWxUser, updateWxUser } from "@/api/kitchen/wxUser"
 
 const { proxy } = getCurrentInstance()
-const { sys_yes_no } = proxy.useDict("sys_yes_no")
-
 const userList = ref([])
 const open = ref(false)
 const loading = ref(true)

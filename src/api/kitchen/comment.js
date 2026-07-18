@@ -12,6 +12,10 @@ export function getComment(id) {
 export function updateComment(data) {
   return request({ url: '/system/kitchen/comment', method: 'put', data: data })
 }
+// 审核评论
+export function auditComment(data) {
+  return request({ url: '/system/kitchen/comment/audit', method: 'put', data: data })
+}
 // 删除评论
 export function delComment(id) {
   return request({ url: '/system/kitchen/comment/' + id, method: 'delete' })

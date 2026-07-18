@@ -57,7 +57,7 @@
 </template>
 
 <script setup name="Comment">
-import { listComment, delComment, updateComment } from "@/api/kitchen/comment"
+import { listComment, delComment, auditComment } from "@/api/kitchen/comment"
 
 const { proxy } = getCurrentInstance()
 const { kitchen_audit_status } = proxy.useDict("kitchen_audit_status")
@@ -110,7 +110,7 @@ function handleSelectionChange(selection) {
 
 /** 审核操作 */
 function doAudit(row, status) {
-  updateComment({ id: row.id, auditStatus: status }).then(() => {
+  auditComment({ id: row.id, auditStatus: status }).then(() => {
     proxy.$modal.msgSuccess(status === "1" ? "已通过" : "已驳回")
     getList()
   })
