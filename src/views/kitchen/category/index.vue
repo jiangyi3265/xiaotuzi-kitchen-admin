@@ -37,6 +37,13 @@
       :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
     >
       <el-table-column label="分类名称" align="left" prop="catName" />
+      <el-table-column label="展示栏目" align="center" prop="displayArea" width="110">
+        <template #default="scope">
+          <el-tag :type="normalizeArea(scope.row.displayArea) === '私房菜' ? 'success' : 'warning'">
+            {{ normalizeArea(scope.row.displayArea) }}
+          </el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="图片" align="center" prop="image" width="100">
         <template #default="scope">
           <image-preview :src="scope.row.image" :width="50" :height="50" />
@@ -75,6 +82,22 @@
             placeholder="选择父分类(顶级请选顶级分类)"
             check-strictly
           />
+        </el-form-item>
+        <el-form-item label="展示栏目" prop="displayArea">
+          <el-select
+            v-model="form.displayArea"
+            :disabled="Number(form.parentId || 0) !== 0"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入新栏目（如同城）"
+            style="width: 100%"
+          >
+            <el-option v-for="area in displayAreaOptions" :key="area" :label="area" :value="area" />
+          </el-select>
+          <div style="color: #909399; font-size: 12px; line-height: 20px">
+            顶级分类可输入新栏目名；子分类自动继承。新栏目会自动成为小程序顶部标签。
+          </div>
         </el-form-item>
         <el-form-item label="分类名称" prop="catName">
           <el-input v-model="form.catName" placeholder="请输入分类名称" />
@@ -119,6 +142,16 @@ const title = ref("")
 const isExpandAll = ref(true)
 const refreshTable = ref(true)
 
+const displayAreaOptions = computed(() => {
+  const areas = new Set(["私房菜", "其他"])
+  const collect = nodes => (nodes || []).forEach(node => {
+    areas.add(normalizeArea(node.displayArea))
+    collect(node.children)
+  })
+  collect(categoryList.value)
+  return Array.from(areas).filter(Boolean)
+})
+
 const data = reactive({
   form: {},
   queryParams: {
@@ -126,7 +159,8 @@ const data = reactive({
     status: undefined
   },
   rules: {
-    catName: [{ required: true, message: "分类名称不能为空", trigger: "blur" }]
+    catName: [{ required: true, message: "分类名称不能为空", trigger: "blur" }],
+    displayArea: [{ required: true, message: "展示栏目不能为空", trigger: "change" }]
   }
 })
 
@@ -164,8 +198,32 @@ function getTreeselect(excludeId) {
       disabled: false,
       children: buildParentOptions(response.data, excludeId)
     }]
+    syncDisplayArea(form.value.parentId)
   })
 }
+
+function findCategory(nodes, id) {
+  for (const node of nodes || []) {
+    if (String(node.id) === String(id)) return node
+    const child = findCategory(node.children, id)
+    if (child) return child
+  }
+  return null
+}
+
+function normalizeArea(value) {
+  if (String(value) === "1") return "其他"
+  if (!value || String(value) === "0") return "私房菜"
+  return String(value).trim()
+}
+
+function syncDisplayArea(parentId) {
+  if (Number(parentId || 0) === 0) return
+  const parent = findCategory(categoryOptions.value, parentId)
+  if (parent) form.value.displayArea = normalizeArea(parent.displayArea)
+}
+
+watch(() => form.value.parentId, syncDisplayArea)
 
 /** 取消按钮 */
 function cancel() {
@@ -180,6 +238,7 @@ function reset() {
     parentId: 0,
     catName: undefined,
     image: undefined,
+    displayArea: "私房菜",
     orderNum: 0,
     status: "0",
     remark: undefined

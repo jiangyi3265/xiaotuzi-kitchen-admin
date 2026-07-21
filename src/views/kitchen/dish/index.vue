@@ -21,10 +21,9 @@
           <el-option v-for="dict in kitchen_dish_status" :key="dict.value" :label="dict.label" :value="dict.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="今日安排" prop="todayType">
-        <el-select v-model="queryParams.todayType" placeholder="展示位置" clearable style="width: 160px">
-          <el-option label="火锅类" value="hotpot" />
-          <el-option label="烧烤" value="barbecue" />
+      <el-form-item label="附加栏目" prop="todayType">
+        <el-select v-model="queryParams.todayType" placeholder="选择附加分类" clearable style="width: 180px">
+          <el-option v-for="category in otherCategoryOptions" :key="category.id" :label="otherCategoryLabel(category.id)" :value="String(category.id)" />
         </el-select>
       </el-form-item>
       <el-form-item>
@@ -58,9 +57,9 @@
       </el-table-column>
       <el-table-column label="菜品名称" align="left" prop="dishName" />
       <el-table-column label="分类" align="center" prop="categoryName" />
-      <el-table-column label="今日安排" align="center" prop="todayType" width="100">
+      <el-table-column label="附加展示" align="center" prop="todayType" width="130">
         <template #default="scope">
-          <el-tag v-if="scope.row.todayType" type="success" effect="plain">{{ scope.row.todayType === 'hotpot' ? '火锅类' : '烧烤' }}</el-tag>
+          <el-tag v-if="scope.row.todayType" type="success" effect="plain">{{ otherCategoryLabel(scope.row.todayType) }}</el-tag>
           <span v-else class="text-muted">不展示</span>
         </template>
       </el-table-column>
@@ -118,10 +117,9 @@
             <el-form-item label="是否上架" prop="status">
               <el-switch v-model="form.status" active-value="1" inactive-value="0" />
             </el-form-item>
-            <el-form-item label="今日安排" prop="todayType">
-              <el-select v-model="form.todayType" clearable placeholder="不展示在“其他”页">
-                <el-option label="火锅类" value="hotpot" />
-                <el-option label="烧烤" value="barbecue" />
+            <el-form-item label="附加展示" prop="todayType">
+              <el-select v-model="form.todayType" clearable placeholder="可同时展示到其他栏目">
+                <el-option v-for="category in otherCategoryOptions" :key="category.id" :label="otherCategoryLabel(category.id)" :value="String(category.id)" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -246,6 +244,7 @@ const { kitchen_dish_status, kitchen_difficulty } = proxy.useDict("kitchen_dish_
 
 const dishList = ref([])
 const categoryOptions = ref([])
+const otherCategoryOptions = ref([])
 const open = ref(false)
 const loading = ref(true)
 const showSearch = ref(true)
@@ -286,8 +285,21 @@ function getList() {
 /** 查询分类下拉树结构 */
 function getTreeselect() {
   treeCategory({ status: "0" }).then(response => {
-    categoryOptions.value = response.data || []
+    const roots = response.data || []
+    categoryOptions.value = roots
+    otherCategoryOptions.value = roots.filter(item => normalizeArea(item.displayArea) !== "私房菜")
   })
+}
+
+function normalizeArea(value) {
+  if (String(value) === "1") return "其他"
+  if (!value || String(value) === "0") return "私房菜"
+  return String(value).trim()
+}
+
+function otherCategoryLabel(value) {
+  const category = otherCategoryOptions.value.find(item => String(item.id) === String(value))
+  return category ? `${normalizeArea(category.displayArea)} / ${category.catName}` : `分类 ${value}`
 }
 
 /** 取消按钮 */
