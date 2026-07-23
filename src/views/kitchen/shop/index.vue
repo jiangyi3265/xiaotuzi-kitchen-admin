@@ -4,7 +4,7 @@
       <template #header>
         <span>厨房 / 店铺设置</span>
       </template>
-      <el-form ref="shopRef" :model="form" label-width="110px" style="max-width: 680px">
+      <el-form ref="shopRef" :model="form" label-width="110px" style="max-width: 880px">
         <el-divider content-position="left">基础信息</el-divider>
         <el-form-item label="厨房名称">
           <el-input v-model="form.shopName" placeholder="请输入厨房名称" />
@@ -41,31 +41,71 @@
           <image-upload v-model="form.alipayQr" :limit="1" />
         </el-form-item>
 
-        <el-divider content-position="left">附近的菜市场</el-divider>
-        <el-form-item label="市场名称">
-		  <el-input v-model="form.storeName" placeholder="请输入菜市场名称" />
-        </el-form-item>
-        <el-form-item label="市场地址">
-		  <el-input v-model="form.storeAddress" placeholder="请输入菜市场详细地址" />
-        </el-form-item>
-        <el-form-item label="营业时间">
-          <el-input v-model="form.businessHours" placeholder="如：10:00 - 21:00" />
-        </el-form-item>
-        <el-form-item label="联系电话">
-		  <el-input v-model="form.storePhone" placeholder="请输入联系电话" />
-        </el-form-item>
-
-        <el-divider content-position="left">商家提前备货群</el-divider>
-        <el-alert title="小程序用户可在提交订单页查看群二维码，提前把采购清单发给商家备货。" type="info" :closable="false" show-icon style="margin-bottom: 18px" />
-        <el-form-item label="群名称">
-          <el-input v-model="form.stockGroupName" placeholder="如：今日食材提前备货群" />
-        </el-form-item>
-        <el-form-item label="群二维码">
-          <image-upload v-model="form.stockGroupQr" :limit="1" />
-        </el-form-item>
-        <el-form-item label="入群说明">
-          <el-input v-model="form.stockGroupNotice" type="textarea" :rows="3" maxlength="300" show-word-limit placeholder="说明入群方式、备货时间和取货规则" />
-        </el-form-item>
+        <el-divider content-position="left">附近的菜市场与备货群</el-divider>
+        <el-alert title="可配置多个菜市场；每个市场对应自己的备货群。填写经纬度后，小程序会按用户距离排序。" type="info" :closable="false" show-icon style="margin-bottom: 18px" />
+        <el-card v-for="(market, index) in (form.markets || [])" :key="market.id || `new-${index}`" shadow="never" class="market-card">
+          <template #header>
+            <div class="market-card-head">
+              <span>菜市场 {{ index + 1 }}：{{ market.marketName || "未命名" }}</span>
+              <el-button link type="danger" icon="Delete" @click="removeMarket(index)">移除</el-button>
+            </div>
+          </template>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="市场名称" required>
+                <el-input v-model="market.marketName" placeholder="请输入菜市场名称" maxlength="100" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="显示状态">
+                <el-switch v-model="market.status" active-value="0" inactive-value="1" active-text="显示" inactive-text="停用" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="市场地址" required>
+            <el-input v-model="market.marketAddress" placeholder="请输入菜市场详细地址" maxlength="255" />
+          </el-form-item>
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="营业时间">
+                <el-input v-model="market.businessHours" placeholder="如：06:00 - 18:00" maxlength="100" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="联系电话">
+                <el-input v-model="market.phone" placeholder="请输入联系电话" maxlength="30" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-row :gutter="16">
+            <el-col :span="8">
+              <el-form-item label="纬度">
+                <el-input-number v-model="market.latitude" :min="-90" :max="90" :precision="7" :controls="false" placeholder="可选" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="经度">
+                <el-input-number v-model="market.longitude" :min="-180" :max="180" :precision="7" :controls="false" placeholder="可选" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="显示排序">
+                <el-input-number v-model="market.orderNum" :min="0" controls-position="right" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-divider content-position="left">该市场的提前备货群</el-divider>
+          <el-form-item label="群名称">
+            <el-input v-model="market.stockGroupName" placeholder="如：迎龙市场提前备货群" maxlength="100" />
+          </el-form-item>
+          <el-form-item label="群二维码">
+            <image-upload v-model="market.stockGroupQr" :limit="1" />
+          </el-form-item>
+          <el-form-item label="入群说明">
+            <el-input v-model="market.stockGroupNotice" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="说明入群方式、备货时间和取货规则" />
+          </el-form-item>
+        </el-card>
+        <el-button type="primary" plain icon="Plus" @click="addMarket">新增菜市场</el-button>
 
         <el-divider content-position="left">公告</el-divider>
         <el-form-item label="公告开关">
@@ -96,12 +136,59 @@ const form = ref({})
 /** 加载店铺设置 */
 function loadShop() {
   getShop().then(response => {
-    form.value = response.data || {}
+    const shop = response.data || {}
+    let markets = Array.isArray(shop.markets) ? shop.markets : []
+    if (!markets.length && (shop.storeName || shop.storeAddress)) {
+      markets = [{
+        marketName: shop.storeName || "",
+        marketAddress: shop.storeAddress || "",
+        businessHours: shop.businessHours || "",
+        phone: shop.storePhone || "",
+        stockGroupQr: shop.stockGroupQr || "",
+        stockGroupName: shop.stockGroupName || "",
+        stockGroupNotice: shop.stockGroupNotice || "",
+        latitude: undefined,
+        longitude: undefined,
+        orderNum: 0,
+        status: "0"
+      }]
+    }
+    form.value = { ...shop, markets }
   })
+}
+
+function addMarket() {
+  if (!Array.isArray(form.value.markets)) form.value.markets = []
+  if (form.value.markets.length >= 100) {
+    proxy.$modal.msgWarning("菜市场最多配置100个")
+    return
+  }
+  form.value.markets.push({
+    marketName: "",
+    marketAddress: "",
+    businessHours: "",
+    phone: "",
+    latitude: undefined,
+    longitude: undefined,
+    stockGroupQr: "",
+    stockGroupName: "",
+    stockGroupNotice: "",
+    orderNum: form.value.markets.length,
+    status: "0"
+  })
+}
+
+function removeMarket(index) {
+  form.value.markets.splice(index, 1)
 }
 
 /** 提交按钮 */
 function submitForm() {
+  const invalid = (form.value.markets || []).some(market => !String(market.marketName || "").trim() || !String(market.marketAddress || "").trim())
+  if (invalid) {
+    proxy.$modal.msgWarning("请完整填写每个菜市场的名称和地址")
+    return
+  }
   saveShop(form.value).then(() => {
     proxy.$modal.msgSuccess("保存成功")
     loadShop()
@@ -110,3 +197,8 @@ function submitForm() {
 
 loadShop()
 </script>
+
+<style scoped>
+.market-card { margin-bottom: 18px; }
+.market-card-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-weight: 600; }
+</style>
